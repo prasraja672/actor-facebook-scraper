@@ -1,9 +1,11 @@
+import type { FbLabel } from './definitions';
+
 export const MOBILE_HOST = 'm.facebook.com';
 export const MOBILE_ADDRESS = `https://m.facebook.com${MOBILE_HOST}`;
 export const DESKTOP_HOST = 'www.facebook.com';
 export const DESKTOP_ADDRESS = `https://${DESKTOP_HOST}`;
 
-export const LABELS = {
+export const LABELS: Record<FbLabel, FbLabel> = {
     LISTING: 'LISTING',
     PAGE: 'PAGE',
     POST: 'POST',

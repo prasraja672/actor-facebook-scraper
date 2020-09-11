@@ -55,7 +55,12 @@ Apify.main(async () => {
         language = 'en-US',
         sessionStorage = '',
         useStealth = false,
+        debugLog = false,
     } = input;
+
+    if (debugLog) {
+        log.setLevel(log.LEVELS.DEBUG);
+    }
 
     if (!Array.isArray(startUrls) || !startUrls.length) {
         throw new Error('You must provide the "startUrls" input');
@@ -151,7 +156,7 @@ Apify.main(async () => {
         await requestQueue.addRequest({
             url: subpage.url,
             userData: {
-                label: 'PAGE' as FbLabel,
+                label: LABELS.PAGE,
                 sub: subpage.section,
                 ref: url,
                 useMobile: true,
@@ -171,11 +176,11 @@ Apify.main(async () => {
             const { url } = request;
             const urlType = getUrlLabel(url);
 
-            if (urlType === 'PAGE') {
+            if (urlType === LABELS.PAGE) {
                 for (const subpage of generateSubpagesFromUrl(url, pageInfo)) {
                     await initSubPage(subpage, url);
                 }
-            } else if (urlType === 'LISTING') {
+            } else if (urlType === LABELS.LISTING) {
                 await requestQueue.addRequest({
                     url,
                     userData: {
@@ -378,7 +383,7 @@ Apify.main(async () => {
                     });
                 }
 
-                if (label !== 'LISTING' && await isNotFoundPage(page)) {
+                if (label !== LABELS.LISTING && await isNotFoundPage(page)) {
                     request.noRetry = true;
 
                     // throw away if page is not available

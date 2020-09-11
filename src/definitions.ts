@@ -49,6 +49,7 @@ export interface Schema {
     commentsMode?: FbCommentsMode;
     sessionStorage?: string;
     useStealth?: boolean;
+    debugLog?: boolean;
 }
 
 export interface FbPageInfo {

@@ -2,7 +2,7 @@ import Apify from 'apify';
 import type { ElementHandle, Page } from 'puppeteer';
 import * as moment from 'moment';
 import { InfoError } from './error';
-import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST } from './constants';
+import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, LABELS } from './constants';
 import type { FbLocalBusiness, FbFT, FbSection, FbLabel, FbReview } from './definitions';
 
 import UserAgents = require('user-agents');
@@ -541,15 +541,15 @@ export const getUrlLabel = (url: string): FbLabel => {
     // works with m.facebook.com, lang-country.facebook.com, www.latest.facebook.com
     if (parsedUrl.hostname.includes('facebook.com')) {
         if (parsedUrl.pathname.startsWith('/biz/')) {
-            return 'LISTING';
+            return LABELS.LISTING;
         }
 
         if (/\/posts\/\d+/.test(parsedUrl.pathname)) {
-            return 'POST';
+            return LABELS.POST;
         }
 
-        if (/\/(pg)?\/?[a-z0-9.-]+\/?/i.test(parsedUrl.pathname)) {
-            return 'PAGE';
+        if (/\/(pg)?\/?[a-z0-9.\-%]+\/?/i.test(parsedUrl.pathname)) {
+            return LABELS.PAGE;
         }
     }
 
@@ -720,7 +720,6 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
             if (!await shouldContinue({ scrollChanged, bodyChanged })) {
                 break;
             }
-
 
             count++;
         }
