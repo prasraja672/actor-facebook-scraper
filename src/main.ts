@@ -211,7 +211,7 @@ Apify.main(async () => {
             persistStateKeyValueStoreId: sessionStorage || undefined,
             maxPoolSize: sessionStorage ? 1 : undefined,
         },
-        maxRequestRetries: 5,
+        maxRequestRetries: 10,
         autoscaledPoolOptions: {
             // make it easier to debug locally with slowMo without switching tabs
             maxConcurrency,
@@ -346,6 +346,10 @@ Apify.main(async () => {
             log.debug(`Visiting page ${request.url}`);
 
             try {
+                if (page.url().includes('login.php?next=')) {
+                    throw new Error(`Content needs login to work, this will be retried but most likely won't work as expected`);
+                }
+
                 if (userData.useMobile) {
                     // need to do some checks if the current mobile page is the interactive one or if
                     // it has been blocked
