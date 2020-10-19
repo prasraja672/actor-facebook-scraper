@@ -1,3 +1,12 @@
+# 4.1.0
+
+* Added minimum post date to only get older posts
+* Fixed reaction count for videos and photo posts
+* Fixed likes parsing
+* Skip pinned post if minimum date isn't set
+* Added reactions breakdown (like, love, wow, sorry, haha, anger, support) for posts under `reactionsBreakdown`
+* Updated SDK version
+
 # 1.1.0
 
 * Date input now allows relative time, such as `1 day`, `2 months`, `1 year`

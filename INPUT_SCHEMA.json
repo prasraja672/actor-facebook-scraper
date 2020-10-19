@@ -268,7 +268,15 @@
         },
         "maxPostDate": {
             "title": "Max post date",
-            "description": "Limit the date of the posts",
+            "description": "Posts are retrieved from newest to oldest. Use this setting to limit how many posts in the past it should fetch.",
+            "example": "3 days",
+            "prefill": "2020-01-01",
+            "type": "string",
+            "editor": "textfield"
+        },
+        "minPostDate": {
+            "title": "Min post date",
+            "description": "Set the minimum post date, remembering that posts start from newest to oldest, it will skip the newest posts up to the specified date",
             "example": "2020-01-01",
             "prefill": "2020-01-01",
             "type": "string",

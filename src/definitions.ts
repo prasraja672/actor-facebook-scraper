@@ -37,6 +37,7 @@ export interface Schema {
     proxyConfiguration?: any;
     maxPosts?: number;
     maxPostDate?: string;
+    minPostDate?: string;
     maxReviewDate?: string;
     maxPostComments?: number;
     maxCommentDate?: string;

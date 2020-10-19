@@ -156,7 +156,7 @@ A 2048MB actor takes an average `0.015` CU for each page on default settings. Mo
 
 Take into account the need for proxies that are included in the costs.
 
-## Advanced Usage
+## Displaying only posts without page information
 
 You can use the `unwind` parameter to display only the posts from your dataset on the platform, as such:
 

@@ -74,7 +74,8 @@ export const getPageInfo = async (page: Page): Promise<FbPageInfo> => {
             .match(/([\s,.0-9]+)\s?([mk]{0,1})/i); // number format varies depending on language, like 1,200, 1 200, 1.200, 1.2K, 2M
 
         if (likesNumber?.[1]) {
-            const parsedNumber = likesNumber[1].trim().replace(/,/g, '.'); // 1,2 -> 1.2, 1.2 -> 1.2, 1200 -> 1200
+            const trimmed = likesNumber[1].trim();
+            const parsedNumber = trimmed.length < 5 ? trimmed.replace(/,/g, '.') : trimmed; // 1,2 -> 1.2, 1.2 -> 1.2, 1200 -> 1200
             let value = +(parsedNumber.replace(/[^.0-9]/g, '')) || 0;
             let multipler = 1;
 
@@ -124,7 +125,15 @@ export const getPagesFromListing = async (page: Page) => {
 /**
  * Get posts until it reaches the given max
  */
-export const getPostUrls = async (page: Page, { max, date, username, requestQueue }: { requestQueue: Apify.RequestQueue, username: string; max?: number; date?: number | null }) => {
+export const getPostUrls = async (page: Page, {
+    max, date, minDate, username, requestQueue,
+}: {
+    requestQueue: Apify.RequestQueue,
+    username: string;
+    max?: number;
+    date?: number | null,
+    minDate?: number | null,
+}) => {
     if (!max) {
         return [];
     }
@@ -134,6 +143,7 @@ export const getPostUrls = async (page: Page, { max, date, username, requestQueu
     const currentUrl = page.url();
 
     const postCutOffDate = cutOffDate(date);
+    const minPostCutOffDate = cutOffDate(minDate, true);
     const start = stopwatch();
     const control = DelayAbort(30000);
     const scrollingSleep = 200;
@@ -167,6 +177,10 @@ export const getPostUrls = async (page: Page, { max, date, username, requestQueu
                     ) {
                         control.postpone();
 
+                        if (!minPostCutOffDate(timestamp) && !post.isPinned) {
+                            continue; // eslint-disable-line no-continue
+                        }
+
                         const isNewer = postCutOffDate(timestamp);
 
                         if (!isNewer) {
@@ -177,20 +191,25 @@ export const getPostUrls = async (page: Page, { max, date, username, requestQueu
                         const parsed = storyFbToDesktopPermalink(url);
 
                         if (isNewer && parsed) {
+                            const story_fbid = parsed.searchParams.get('story_fbid');
+
                             await requestQueue.addRequest({
                                 url: parsed.href,
                                 userData: {
                                     label: LABELS.POST,
                                     useMobile: false,
                                     username,
-                                    canonical: `${DESKTOP_ADDRESS}/${username}/posts/${parsed?.searchParams.get('story_fbid')}`,
+                                    canonical: `${DESKTOP_ADDRESS}/${username}/${story_fbid
+                                        ? `posts/${story_fbid}`
+                                        : parsed.pathname.split(/\/(photos|videos)\//).slice(1).join('/')
+                                    }`,
                                 },
                             });
                         }
                     }
 
-                    if (urls.size >= max || olderCount > Math.ceil(urls.size / 2)) {
-                        log.info('Stopping getting posts', { olderCount, size: urls.size });
+                    if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.4))) {
+                        log.info('Stopping getting posts', { olderCount, size: urls.size, threshold: Math.ceil(urls.size / 1.4) });
 
                         finish.resolve();
                         return;
@@ -515,9 +534,21 @@ export const getPostInfoFromScript = async (page: Page, url: string) => {
     const maxFromMatches = (matches: IterableIterator<RegExpMatchArray>) => [...matches]
         .reduce((count, [, value]) => (+value > count ? +value : count), 0);
 
+    const reactionsBreakdown = (() => {
+        try {
+            return eval(`${html.split('top_reactions:{edges:')?.[1].split('}]}')?.[0]}}]`) as any[];
+        } catch (e) {
+            return [];
+        }
+    })();
+
     return {
         comments: maxFromMatches(commentsMatch),
         reactions: maxFromMatches(reactionsMatch),
+        reactionsBreakdown: reactionsBreakdown.reduce((out, node) => {
+            out[`${get(node, ['node', 'reaction_type'], '')}`.toLowerCase()] = node.reaction_count;
+            return out;
+        }, {}),
         shares: maxFromMatches(shareMatch),
     };
 };
@@ -644,7 +675,8 @@ export const getPostComments = async (
 
                         const hasNext = get(data, ['page_info', 'has_next_page']);
 
-                        if (hasNext === false || comments.size >= max || olderCount > Math.ceil(comments.size / 2)) {
+                        if (hasNext === false || comments.size >= max || olderCount > Math.ceil(comments.size / 1.4)) {
+                            log.debug('Posts comments', { hasNext, size: comments.size, olderCount, threshold: Math.ceil(comments.size / 1.4) });
                             finish.resolve();
                         }
                     }

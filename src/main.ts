@@ -43,6 +43,7 @@ Apify.main(async () => {
         proxyConfiguration,
         maxPosts = 3,
         maxPostDate,
+        minPostDate,
         maxPostComments = 15,
         maxReviewDate,
         maxCommentDate,
@@ -104,10 +105,20 @@ Apify.main(async () => {
     log.info(`Starting crawler with ${startUrlsRequests.length()} urls`);
     log.info(`Using language "${(LANGUAGES as any)[language]}" (${language})`);
 
-    const processedPostDate = maxPostDate ? parseRelativeDate(maxPostDate) : null;
+    const processedMaxPostDate = maxPostDate ? parseRelativeDate(maxPostDate) : null;
 
-    if (processedPostDate) {
-        log.info(`Getting posts from ${new Date(processedPostDate).toLocaleString()} and newer`);
+    if (scrapePosts && processedMaxPostDate) {
+        log.info(`\n-------\n\nGetting posts from ${new Date(processedMaxPostDate).toLocaleString()} and newer\n\n-------`);
+    }
+
+    const processedMinPostDate = minPostDate ? parseRelativeDate(minPostDate) : null;
+
+    if (scrapePosts && processedMinPostDate) {
+        log.info(`\n-------\n\nGetting posts from ${new Date(processedMinPostDate).toLocaleString()} and older\n\n-------`);
+    }
+
+    if (scrapePosts && processedMaxPostDate && processedMinPostDate && processedMinPostDate < processedMaxPostDate) {
+        throw new Error(`You can't specify a minimum post date less than maximum post date:\n\n Minimum: ${new Date(processedMinPostDate).toLocaleString()} / Maximum: ${new Date(processedMaxPostDate).toLocaleString()}`);
     }
 
     const processedCommentDate = maxCommentDate ? parseRelativeDate(maxCommentDate) : null;
@@ -475,7 +486,8 @@ Apify.main(async () => {
                             // read on their own phase/label
                             await getPostUrls(page, {
                                 max: maxPosts,
-                                date: processedPostDate,
+                                date: processedMaxPostDate,
+                                minDate: processedMinPostDate,
                                 username,
                                 requestQueue,
                             });

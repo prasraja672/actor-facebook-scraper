@@ -2,7 +2,7 @@ import Apify from 'apify';
 import type { ElementHandle, Page } from 'puppeteer';
 import * as moment from 'moment';
 import { InfoError } from './error';
-import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, LABELS } from './constants';
+import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, LABELS, DESKTOP_ADDRESS } from './constants';
 import type { FbLocalBusiness, FbFT, FbSection, FbLabel, FbReview } from './definitions';
 
 import UserAgents = require('user-agents');
@@ -21,9 +21,9 @@ export const parseRelativeDate = (dateFrom: string) => {
     if (!Number.isNaN(parsedDateFrom.getTime())) {
         return parsedDateFrom.getTime();
     }
-    const split = dateFrom.split(' ');
+    const split = dateFrom.split(' ', 2);
     const now = moment();
-    const difference = now.clone().subtract(split[0] as any, split[1]);
+    const difference = now.clone().subtract(+split[0] as any, split[1]);
     if (now !== difference) {
         // Means the subtraction worked
         return difference.valueOf();
@@ -42,11 +42,13 @@ export const storyFbToDesktopPermalink = (url?: string | null) => {
 
     const parsed = new URL(url);
     parsed.hostname = DESKTOP_HOST;
+
     if (url.includes('story_fbid=')
         && url.includes('id=')
         && !url.includes('/photos')) {
         parsed.pathname = '/permalink.php';
     }
+
     parsed.searchParams.forEach((_, key) => {
         if (!['story_fbid', 'id', 'substory_index', 'type'].includes(key)) {
             parsed.searchParams.delete(key);
@@ -90,17 +92,17 @@ export function convertDate(value?: string | number | Date | null, isoString = f
 }
 
 /**
- * Check if the provided date is greater than the minimum
+ * Check if the provided date is greater/less than the minimum
  */
-export const cutOffDate = (base?: string | number | null) => {
+export const cutOffDate = (base?: string | number | null, inverse = false) => {
     let d = convertDate(base);
 
     if (!Number.isFinite(d)) {
-        d *= -1;
+        d *= inverse ? 1 : -1;
     }
 
     return (compare: Date | string | number) => {
-        return convertDate(compare) >= d;
+        return inverse ? convertDate(compare) <= d : convertDate(compare) >= d;
     };
 };
 
@@ -356,6 +358,7 @@ export const pageSelectors = {
             const article = el.closest<HTMLDivElement>('article');
 
             if (article) {
+                const isPinned = !!(article.parentElement?.querySelector('article ~ img'));
                 const { ft } = article.dataset;
 
                 if (!ft) {
@@ -363,10 +366,13 @@ export const pageSelectors = {
                 }
 
                 try {
-                    return {
+                    const result = {
                         ft: JSON.parse(ft) as FbFT,
                         url: el.closest<HTMLAnchorElement>('a[href]')?.href || '',
+                        isPinned,
                     };
+
+                    return result;
                 } catch (e) {} // eslint-disable-line
             }
         });
