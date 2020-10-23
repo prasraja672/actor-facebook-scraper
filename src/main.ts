@@ -234,7 +234,7 @@ Apify.main(async () => {
         launchPuppeteerFunction: async (options) => {
             return Apify.launchPuppeteer({
                 ...options,
-                slowMo: log.getLevel() === log.LEVELS.DEBUG ? 100 : undefined,
+                slowMo: debugLog ? 200 : undefined,
                 useChrome: Apify.isAtHome(),
                 stealth: useStealth,
                 stealthOptions: {
@@ -620,7 +620,7 @@ Apify.main(async () => {
     // generate the dataset from all the crawled pages
     await Apify.pushData([...state.values()].filter(s => s.categories?.length).map(val => ({
         ...val,
-        "#version": 2, // current data format version
+        "#version": 3, // current data format version
         '#finishedAt': finished,
     })));
 

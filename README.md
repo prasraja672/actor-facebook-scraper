@@ -10,137 +10,97 @@ If you want to run the actor on the Apify platform, you need to have at least so
 
 Example input, only `startUrls` and `proxyConfiguration` are required (check `INPUT_SCHEMA.json` for settings):
 
-```js
+```jsonc
 {
     "startUrls": [
+        { "url": "https://www.facebook.com/apifytech" },
         { "url": "https://www.facebook.com/biz/hotel-supply-service/?place_id=103095856397524" }
     ],
+    "language": "en-US",
+    "commentsMode": "RANKED_THREADED", // ["RANKED_THREADED", "RECENT_ACTIVITY", "RANKED_UNFILTERED"]
     "maxPosts": 3,
-    "maxPostDate": "2020-10-10",
+    "maxPostDate": "3 days", // or a static date in ISO format, like 2020-01-01
+    "minPostDate": "1 day", // or statis date in ISO format
     "maxPostComments": 15,
-    "maxReviewDate": "10 days", // if today is 2020-04-11, reviews will be 2020-04-01 and beyond
-    "maxCommentDate": "1 month",
+    "maxCommentDate": "2020-01-01",
     "maxReviews": 3,
-    "commentsMode": "RANKED_THREADED",
+    "maxReviewDate": "2020-01-01",
     "scrapeAbout": true,
     "scrapeReviews": true,
     "scrapePosts": true,
     "scrapeServices": true,
-    "language": "cs-CZ",
     "proxyConfiguration": {
-        "useApifyProxy": true
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["SHADER"]
     }
 }
 ```
 
 ## Output
 
-```json
+```jsonc
 {
-  "categories": [
-    "Hotel",
-    "Lázně"
-  ],
-  "info": [
-    "Luxury 5 star hotel in former monastery complex in Prague, Czech Republic."
-  ],
-  "likes": 4065,
-  "messenger": "https://m.me/1" ...,
-  "posts": [
-    {
-      "postDate": "2020-03-08T15:35:51.000Z",
-      "postText": "Our guest " ...,
-      "postImages": [
-        {
-          "link": "https://www.facebook.com/.../photos" ...,
-          "image": "https://scontent-prg1-1.xx.fbcdn.net/v/t1.0-0/" ...
-        }
-      ],
-      "postLinks": [],
-      "postUrl": "https://www.facebook.com/permalink.php?story_fbid="...,
-      "postStats": {
-        "comments": 4,
-        "reactions": 66,
-        "shares": 2
-      },
-      "postComments": {
-        "count": 2,
-        "mode": "RANKED_THREADED",
-        "comments": [
-          {
-            "date": "2020-03-08T22:13:10.000Z",
-            "name": "Caro" ...,
-            "profileUrl": null,
-            "text": "Wow..." ...,
-            "url": "https://www.facebook.com/.../posts/" ...
-          },
-          {
-            "date": "2020-03-08T16:10:43.000Z",
-            "name": "Bri" ...,
-            "profileUrl": "https://www.facebook.com/b" ...,
-            "text": "Dan" ...,
-            "url": "https://www.facebook.com/.../posts/" ...
-          }
-        ]
-      }
-    }
-  ],
-  "priceRange": "$$$$",
-  "reviews": {
-    "reviews": [
-      {
-        "title": "Phi" ...,
-        "text": "Très "...,
-        "attributes": [
-          "Romantická atmosféra",
-          "Luxusní hotelová kosmetika",
-          "Důmyslné zařízení",
-          "Nápo"
-        ],
-        "url": "https://www.facebook.com/permalink.php?story_fbid=" ...,
-        "date": "2020-02-14T20:42:37.000Z",
-        "canonical": "https://m.facebook.com/story.php?story_fbid=" ...
-      }
+    "categories": ["Hotel"],
+    "info": [
+        "Residenc", // ...
+        "General Information\n" // ...
     ],
-    "average": 4.8,
-    "count": 225
-  },
-  "services": [
-    {
-      "title": "The Refectory",
-      "text": "In The Refectory "...
-    }
-  ],
-  "title": "Hotel, Prague",
-  "pageUrl": "https://www.facebook.com/...",
-  "address": {
-    "city": "Praha",
-    "lat": 50.08905444,
-    "lng": 14.40639193,
-    "postalCode": "118 00",
-    "region": "Prague",
-    "street": "Letenská 12/33"
-  },
-  "awards": [],
-  "email": "email@" ...,
-  "impressum": [],
-  "instagram": null,
-  "phone": "+420 266 112 233",
-  "products": [],
-  "transit": null,
-  "twitter": null,
-  "website": "https://www.mar" ...,
-  "youtube": null,
-  "mission": [],
-  "overview": [],
-  "payment": null,
-  "checkins": "11 504 lidí tu oznámilo svoji polohu",
-  "#startedAt": "2020-03-31T17:26:01.919Z",
-  "verified": true,
-  "#url": "https://m.facebook.com/pg/...",
-  "#ref": "https://www.facebook.com/.../",
-  "#version": 1,
-  "#finishedAt": "2020-03-31T17:34:22.979Z"
+    "likes": 1538,
+    "messenger": "https://m.me/22163", // ...
+    "posts": [
+        {
+            "postDate": "2020-09-10T09:33:43.000Z",
+            "postText": "Do Prahy opět", // ...
+            "postImages": [
+                {
+                    "link": "https://www.facebook.com/Residen", //...
+                    "image": "https://scontent-ort2-1.xx.fbcdn.net/v/t1.0" // ...
+                }
+            ],
+            "postLinks": ["https://residen"], // ...
+            "postUrl": "https://www.facebook.com/permalink.php?story_fbid=", // ...
+            "postStats": {
+                "comments": 1,
+                "reactions": 32,
+                "reactionsBreakdown": {
+                    "like": 26,
+                    "love": 6
+                },
+                "shares": 1
+            },
+            "postComments": {
+                "count": 0,
+                "mode": "RANKED_UNFILTERED",
+                "comments": []
+            }
+        }
+    ],
+    "priceRange": "$$$",
+    "title": "Hotel Resid", // ...
+    "pageUrl": "https://www.facebook.com/Residen", //...
+    "address": {
+        "city": "Prague, Czech Republic",
+        "lat": 50.09136,
+        "lng": 14.42575,
+        "postalCode": "11000",
+        "region": "Prague",
+        "street": "Haštalská 19"
+    },
+    "awards": [],
+    "email": "", //...
+    "impressum": [],
+    "instagram": "@Residen", // ...
+    "phone": "+420 22", //...
+    "products": [],
+    "transit": null,
+    "twitter": "@Residen", //...
+    "website": "http://", //...
+    "youtube": null,
+    "mission": [],
+    "overview": [],
+    "payment": null,
+    "checkins": "2,082 people checked in here",
+    "verified": false,
 }
 ```
 
@@ -170,7 +130,6 @@ https://api.apify.com/v2/datasets/zbg3vVF3NnXGZfdsX/items?format=json&clean=1&un
 
 * Pages "Likes" count is a best-effort. The mobile page doesn't provide the count, and some languages don't provide any at all. So if a page has 1.9M, the number will most likely be 1900000 instead of the exact number.
 * No content, stats or comments for live stream posts
-* There's a known issue that some posts can make the crawler hang for a long time, using all the CPU. It's an edge case that involves a lot of variables to happen, but it's common to happen with a shared post from another live stream with links on both posts.
 * New reviews don't contain a rating from 1 to 5, but rather is positive or negative
 * Cut-off date for posts happen on the original posted date, not edited date, i.e: posts show as `February 20th 2:11AM`, but that's the edited date, the actual post date is `February 19th 11:31AM` provided on the DOM
 * The order of items aren't necessarily the same as seen on the page, and not sorted by date

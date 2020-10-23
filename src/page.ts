@@ -151,7 +151,7 @@ export const getPostUrls = async (page: Page, {
 
     const getPosts = async () => {
         try {
-            const posts = await pageSelectors.posts(page);
+            const posts = await pageSelectors.posts(page, scrollingSleep);
 
             for (const post of posts) {
                 const { top_level_post_id, story_attachment_style, page_id, page_insights } = post.ft;
@@ -208,7 +208,7 @@ export const getPostUrls = async (page: Page, {
                         }
                     }
 
-                    if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.4))) {
+                    if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.1))) {
                         log.info('Stopping getting posts', { olderCount, size: urls.size, threshold: Math.ceil(urls.size / 1.4) });
 
                         finish.resolve();
@@ -254,7 +254,7 @@ export const getPostUrls = async (page: Page, {
 
                     log.debug(`Current size ${urls.size} of ${max}`, { count, bodyChanged, scrollChanged });
 
-                    return urls.size >= max || (count > 5 && !bodyChanged && !scrollChanged);
+                    return urls.size >= max || (count > 100 && !bodyChanged && !scrollChanged);
                 },
             }),
         ]);
@@ -675,8 +675,8 @@ export const getPostComments = async (
 
                         const hasNext = get(data, ['page_info', 'has_next_page']);
 
-                        if (hasNext === false || comments.size >= max || olderCount > Math.ceil(comments.size / 1.4)) {
-                            log.debug('Posts comments', { hasNext, size: comments.size, olderCount, threshold: Math.ceil(comments.size / 1.4) });
+                        if (hasNext === false || comments.size >= max || olderCount > Math.ceil(comments.size / 1.1)) {
+                            log.debug('Posts comments', { hasNext, size: comments.size, olderCount, threshold: Math.ceil(comments.size / 1.1) });
                             finish.resolve();
                         }
                     }
