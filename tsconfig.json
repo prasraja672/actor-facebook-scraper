@@ -19,6 +19,7 @@
             "es2018.asynciterable",
             "dom.iterable"
         ],
+        "outDir": "./lib",
         "rootDir": "./src",
         "noImplicitAny": true
     },

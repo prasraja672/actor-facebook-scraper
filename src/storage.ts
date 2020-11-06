@@ -52,7 +52,7 @@ export const statePersistor = async () => {
     const kv = await Apify.openKeyValueStore();
 
     const state = new Map<string, Partial<FbPage>>(
-        await kv.getValue('STATE'),
+        await kv.getValue('STATE') as any,
     );
 
     const map = AsyncMap(state);
