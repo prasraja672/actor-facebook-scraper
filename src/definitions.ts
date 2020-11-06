@@ -68,15 +68,6 @@ export interface FbFT {
     top_level_post_id: string;
     page_id: string;
     story_attachment_style: string;
-    page_insights: {
-        [index: string]: {
-            psn: string;
-            page_id: string;
-            post_context: {
-                publish_time: number;
-            };
-        };
-    };
 }
 
 export interface FbLocalBusiness {

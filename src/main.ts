@@ -25,14 +25,14 @@ import {
     isNotFoundPage,
 } from './page';
 import { statePersistor, emptyState } from './storage';
-import type { Schema, FbLabel, FbSection } from './definitions';
+import type { Schema, FbLabel, FbSection, FbPage } from './definitions';
 
 import LANGUAGES = require('./languages.json');
 
 const { log, puppeteer } = Apify.utils;
 
 Apify.main(async () => {
-    const input: Schema | null = await Apify.getInput();
+    const input: Schema | null = await Apify.getInput() as any;
 
     if (!input || typeof input !== 'object') {
         throw new Error('Missing input');
@@ -147,7 +147,7 @@ Apify.main(async () => {
         throw new Error('No requests were loaded from startUrls');
     }
 
-    const initSubPage = async (subpage: { url: string; section: FbSection }, url: string) => {
+    const initSubPage = async (subpage: { url: string; section: FbSection, useMobile: boolean }, url: string) => {
         if (subpage.section === 'home') {
             const username = extractUsernameFromUrl(subpage.url);
 
@@ -170,7 +170,7 @@ Apify.main(async () => {
                 label: LABELS.PAGE,
                 sub: subpage.section,
                 ref: url,
-                useMobile: true,
+                useMobile: subpage.useMobile,
             },
         });
     };
@@ -223,10 +223,7 @@ Apify.main(async () => {
             maxPoolSize: sessionStorage ? 1 : undefined,
         },
         maxRequestRetries: 10,
-        autoscaledPoolOptions: {
-            // make it easier to debug locally with slowMo without switching tabs
-            maxConcurrency,
-        },
+        maxConcurrency,
         puppeteerPoolOptions: {
             maxOpenPagesPerInstance: maxConcurrency,
         },
@@ -234,7 +231,6 @@ Apify.main(async () => {
         launchPuppeteerFunction: async (options) => {
             return Apify.launchPuppeteer({
                 ...options,
-                slowMo: debugLog ? 200 : undefined,
                 useChrome: Apify.isAtHome(),
                 stealth: useStealth,
                 stealthOptions: {
@@ -250,10 +246,10 @@ Apify.main(async () => {
                     mockChromeInIframe: false,
                 },
                 args: [
-                    ...options?.args,
+                    ...(options as any)?.args,
                     '--disable-setuid-sandbox',
                 ],
-            });
+            } as any);
         },
         persistCookiesPerSession: sessionStorage !== '',
         handlePageTimeoutSecs, // more comments, less concurrency
@@ -262,7 +258,7 @@ Apify.main(async () => {
 
             await executeOnDebug(async () => {
                 await page.exposeFunction('logMe', (...args) => {
-                    console.log(...args);
+                    console.log(...args); // eslint-disable-line no-console
                 });
             });
 
@@ -562,7 +558,7 @@ Apify.main(async () => {
                                 },
                                 ...(value?.posts ?? []),
                             ],
-                        };
+                        } as Partial<FbPage>;
                     });
 
                     log.info(`Processed post in ${postTimer() / 1000}s`, { url: request.url });

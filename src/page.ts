@@ -3,7 +3,7 @@ import type { Page, Response } from 'puppeteer';
 import DelayAbort, { AbortError } from 'delayable-idle-abort-promise';
 import * as escapeRegex from 'escape-string-regexp';
 import get = require('lodash.get');
-import type { FbPageInfo, FbPost, FbPage, FbGraphQl, FbComment, FbCommentsMode, FbReview, FbService, FbMap } from './definitions';
+import type { FbPageInfo, FbPost, FbPage, FbGraphQl, FbComment, FbCommentsMode, FbReview, FbService } from './definitions';
 import {
     deferred,
     pageSelectors,
@@ -16,7 +16,7 @@ import {
     stopwatch,
     storyFbToDesktopPermalink,
 } from './functions';
-import { CSS_SELECTORS, DESKTOP_ADDRESS, PSN_POST_TYPE_BLACKLIST, LABELS } from './constants';
+import { CSS_SELECTORS, DESKTOP_ADDRESS, LABELS } from './constants';
 import { InfoError } from './error';
 
 const { log, sleep } = Apify.utils;
@@ -153,67 +153,53 @@ export const getPostUrls = async (page: Page, {
         try {
             const posts = await pageSelectors.posts(page, scrollingSleep);
 
-            for (const post of posts) {
-                const { top_level_post_id, story_attachment_style, page_id, page_insights } = post.ft;
+            for (const { isPinned, publishedTime, url } of posts) {
+                log.debug('Post info', {
+                    isPinned,
+                    publishedTime,
+                    url,
+                });
 
-                if (story_attachment_style !== 'scheduled_live_video_post' // skip scheduled live
-                    && top_level_post_id
-                    && page_id && page_insights) {
-                    const timestamp = +get(page_insights, [page_id, 'post_context', 'publish_time']);
-                    const psn = get(page_insights, [page_id, 'psn']);
+                control.postpone();
 
-                    log.debug('Post info', {
-                        url: post.url,
-                        psn,
-                        timestamp,
+                if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.1))) {
+                    log.info('Stopping getting posts', { olderCount, size: urls.size, threshold: Math.ceil(urls.size / 1.4) });
+
+                    finish.resolve();
+                    return;
+                }
+
+                if (!minPostCutOffDate(publishedTime) && !isPinned) {
+                    log.debug('No min cut off date', { publishedTime, url });
+                    continue; // eslint-disable-line no-continue
+                }
+
+                const isNewer = postCutOffDate(publishedTime);
+
+                if (!isNewer) {
+                    log.debug('Is older', { publishedTime, url });
+                    olderCount++;
+                }
+
+                const parsed = storyFbToDesktopPermalink(url);
+
+                if (isNewer && parsed && !urls.has(parsed.toString())) {
+                    urls.add(parsed.toString());
+
+                    const story_fbid = parsed.searchParams.get('story_fbid');
+
+                    await requestQueue.addRequest({
+                        url: parsed.href,
+                        userData: {
+                            label: LABELS.POST,
+                            useMobile: false,
+                            username,
+                            canonical: `${DESKTOP_ADDRESS}/${username}/${story_fbid
+                                ? `posts/${story_fbid}`
+                                : parsed.pathname.split(/\/(photos|videos)\//).slice(1).join('/')
+                            }`,
+                        },
                     });
-
-                    const { url } = post;
-
-                    if (url
-                        && !urls.has(top_level_post_id)
-                        && !PSN_POST_TYPE_BLACKLIST.includes(psn) // skip some post types
-                        && timestamp
-                    ) {
-                        control.postpone();
-
-                        if (!minPostCutOffDate(timestamp) && !post.isPinned) {
-                            continue; // eslint-disable-line no-continue
-                        }
-
-                        const isNewer = postCutOffDate(timestamp);
-
-                        if (!isNewer) {
-                            olderCount++;
-                        }
-
-                        urls.add(top_level_post_id);
-                        const parsed = storyFbToDesktopPermalink(url);
-
-                        if (isNewer && parsed) {
-                            const story_fbid = parsed.searchParams.get('story_fbid');
-
-                            await requestQueue.addRequest({
-                                url: parsed.href,
-                                userData: {
-                                    label: LABELS.POST,
-                                    useMobile: false,
-                                    username,
-                                    canonical: `${DESKTOP_ADDRESS}/${username}/${story_fbid
-                                        ? `posts/${story_fbid}`
-                                        : parsed.pathname.split(/\/(photos|videos)\//).slice(1).join('/')
-                                    }`,
-                                },
-                            });
-                        }
-                    }
-
-                    if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.1))) {
-                        log.info('Stopping getting posts', { olderCount, size: urls.size, threshold: Math.ceil(urls.size / 1.4) });
-
-                        finish.resolve();
-                        return;
-                    }
                 }
             }
         } catch (e) {
@@ -536,7 +522,7 @@ export const getPostInfoFromScript = async (page: Page, url: string) => {
 
     const reactionsBreakdown = (() => {
         try {
-            return eval(`${html.split('top_reactions:{edges:')?.[1].split('}]}')?.[0]}}]`) as any[];
+            return eval(`${html.split('top_reactions:{edges:')?.[1].split('}]}')?.[0]}}]`) as any[]; // eslint-disable-line no-eval
         } catch (e) {
             return [];
         }
@@ -614,8 +600,9 @@ export const getPostComments = async (
     }: {
         max?: number;
         date?: number | null;
-        mode?: FbCommentsMode
-    }): Promise<FbPost['postComments']> => {
+        mode?: FbCommentsMode;
+    },
+): Promise<FbPost['postComments']> => {
     const comments = new Map<string, FbComment>();
 
     const finish = deferred(); // gracefully finish

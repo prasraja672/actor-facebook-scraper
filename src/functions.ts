@@ -1,11 +1,11 @@
 import Apify from 'apify';
 import type { ElementHandle, Page } from 'puppeteer';
 import * as moment from 'moment';
-import { InfoError } from './error';
-import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, LABELS, DESKTOP_ADDRESS } from './constants';
-import type { FbLocalBusiness, FbFT, FbSection, FbLabel, FbReview } from './definitions';
-
 import UserAgents = require('user-agents');
+
+import { InfoError } from './error';
+import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, LABELS } from './constants';
+import type { FbLocalBusiness, FbSection, FbLabel, FbReview } from './definitions';
 
 const { log, sleep } = Apify.utils;
 
@@ -109,11 +109,11 @@ export const cutOffDate = (base?: string | number | null, inverse = false) => {
 /**
  * Resolves a promise from the outside
  */
-export const deferred = () => {
+export const deferred = <T = any>() => {
     // eslint-disable-next-line @typescript-eslint/no-empty-function
-    let resolve: () => any = () => {};
-    const promise = new Promise((r) => {
-        resolve = r;
+    let resolve: (value?: T | PromiseLike<T>) => void = () => {};
+    const promise = new Promise<T>((r) => {
+        resolve = r as any;
     });
     return { promise, resolve };
 };
@@ -195,7 +195,7 @@ export const evaluateFilterMap = async <E extends Element, C extends (el: E) => 
             const result = await el.evaluate(map);
 
             if (result !== undefined && result !== null) {
-                values.push(result as MapReturn);
+                values.push(result as unknown as MapReturn);
             }
         } catch (e) {
             // suppress errors, show them on debug
@@ -281,7 +281,7 @@ export const createSelectorFromImageSrc = (names: string[]) => {
             }
 
             await executeOnDebug(async () => {
-                await Apify.setValue(`image-selector--${names.join('~')}--${Math.random()}`, await page.content(), { contentType: 'text/html' });
+                await Apify.setValue(`image-selector--${names.join('~')}--${Math.random()}`, await page.content() as any, { contentType: 'text/html' });
             });
 
             throw new InfoError('Image selector not found', {
@@ -353,22 +353,27 @@ export const pageSelectors = {
         });
     }),
     // get metadata from posts
-    posts: createPageSelector('abbr', 'posts', async (els) => {
+    posts: createPageSelector('abbr[data-utime]', 'posts', async (els) => {
         return evaluateFilterMap(els, async (el) => {
-            const article = el.closest<HTMLDivElement>('article');
+            const article = el.closest<HTMLDivElement>('[role="article"]');
 
             if (article) {
-                const isPinned = !!(article.parentElement?.querySelector('article ~ img'));
-                const { ft } = article.dataset;
+                const isPinned = !!(article.querySelector('i[data-tooltip-content].img'));
+                const { utime } = (el as HTMLElement).dataset;
+                const url = el.closest<HTMLAnchorElement>('a[href]')?.href || '';
 
-                if (!ft) {
+                if (!utime || !url) {
                     return;
                 }
 
                 try {
+                    article.parentElement!.parentElement!.remove();
+                } catch (e) {} // eslint-disable-line
+
+                try {
                     const result = {
-                        ft: JSON.parse(ft) as FbFT,
-                        url: el.closest<HTMLAnchorElement>('a[href]')?.href || '',
+                        publishedTime: +utime * 1000,
+                        url,
                         isPinned,
                     };
 
@@ -576,12 +581,28 @@ export const generateSubpagesFromUrl = (
         .split('/', 5) // we are interested in https://m.facebook.com/pg/pagename
         .join('/');
 
-    const urls: Array<{ url: string; section: FbSection }> = [{ url: base, section: 'home' }];
+    const urls: Array<{
+        useMobile: boolean;
+        url: string;
+        section: FbSection;
+    }> = [{ url: base.toString(), section: 'home', useMobile: true }];
 
-    return urls.concat(pages.map(sub => ({
-        url: `${base}/${sub}`,
-        section: sub,
-    })));
+    return urls.concat(pages.map(sub => {
+        const isPostPage = sub === 'posts';
+        const subUrl = new URL(base);
+        subUrl.pathname += `/${sub}`;
+
+        // post needs to be desktop
+        if (isPostPage) {
+            subUrl.hostname = DESKTOP_HOST;
+        }
+
+        return {
+            url: subUrl.toString(),
+            section: sub,
+            useMobile: !isPostPage,
+        };
+    }));
 };
 
 /**
