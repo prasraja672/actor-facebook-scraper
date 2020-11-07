@@ -11,6 +11,7 @@ import {
     stopwatch,
     executeOnDebug,
     parseRelativeDate,
+    storyFbToDesktopPermalink,
 } from './functions';
 import {
     getPagesFromListing,
@@ -197,6 +198,21 @@ Apify.main(async () => {
                     userData: {
                         label: urlType,
                         useMobile: false,
+                    },
+                });
+            } else if (urlType === LABELS.POST) {
+                const username = extractUsernameFromUrl(url);
+
+                // this is for home
+                await initSubPage(generateSubpagesFromUrl(url, [])[0], url);
+
+                await requestQueue.addRequest({
+                    url,
+                    userData: {
+                        label: LABELS.POST,
+                        useMobile: false,
+                        username,
+                        canonical: storyFbToDesktopPermalink(url)?.toString(),
                     },
                 });
             }
