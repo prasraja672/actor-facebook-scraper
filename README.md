@@ -2,6 +2,33 @@
 
 Extract public information from Facebook Pages.
 
+- [Features](#features)
+- [Usage](#usage)
+- [Input](#input)
+- [Output](#output)
+- [Expected Consumption](#expected-consumption)
+- [Displaying only posts without page information](#displaying-only-posts-without-page-information)
+- [Limitations / Caveats](#limitations--caveats)
+
+## Features
+
+* Extract page content and optionally filter them by minimum and maximum dates:
+  * Scrape pages' posts
+  * Scrape posts' comments
+  * Scrape pages' reviews
+* Get all page information, including:
+  * Likes
+  * Address (includes latitude / longitude)
+  * Instagram profile
+  * Twitter profile
+  * Website
+  * Services
+  * Messenger url
+  * Telephone
+  * Check-ins
+  * All other provided text information like awards, price range, mission
+* Fetch businesses from the directory on https://www.facebook.com/biz/directory/
+
 ## Usage
 
 If you want to run the actor on the Apify platform, you need to have at least some Apify proxy group so that Facebook doesn't block you. Since it uses Puppeteer, the minimum memory for running is 2048 MB.
@@ -128,6 +155,7 @@ https://api.apify.com/v2/datasets/zbg3vVF3NnXGZfdsX/items?format=json&clean=1&un
 
 ## Limitations / Caveats
 
+* Personal profiles and groups aren't accessible at the moment
 * Pages "Likes" count is a best-effort. The mobile page doesn't provide the count, and some languages don't provide any at all. So if a page has 1.9M, the number will most likely be 1900000 instead of the exact number.
 * No content, stats or comments for live stream posts
 * New reviews don't contain a rating from 1 to 5, but rather is positive or negative
@@ -145,7 +173,8 @@ This project adheres to semver.
 
 ## Upcoming
 
-* Separated dataset for posts, comments, and reviews
+* Separated mode for posts, comments, and reviews (breaking change)
+* Public groups
 
 ## License
 

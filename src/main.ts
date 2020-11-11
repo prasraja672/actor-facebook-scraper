@@ -173,7 +173,7 @@ Apify.main(async () => {
                 ref: url,
                 useMobile: subpage.useMobile,
             },
-        });
+        }, { forefront: true });
     };
 
     const pageInfo = [
@@ -203,9 +203,6 @@ Apify.main(async () => {
             } else if (urlType === LABELS.POST) {
                 const username = extractUsernameFromUrl(url);
 
-                // this is for home
-                await initSubPage(generateSubpagesFromUrl(url, [])[0], url);
-
                 await requestQueue.addRequest({
                     url,
                     userData: {
@@ -215,11 +212,14 @@ Apify.main(async () => {
                         canonical: storyFbToDesktopPermalink(url)?.toString(),
                     },
                 });
+
+                // this is for home
+                await initSubPage(generateSubpagesFromUrl(url, [])[0], url);
             }
         } catch (e) {
             if (e instanceof InfoError) {
                 // We want to inform the rich error before throwing
-                log.warning(e.message, e.toJSON());
+                log.warning(`------\n\n${e.message}\n\n------`, e.toJSON());
             } else {
                 throw e;
             }
@@ -247,6 +247,7 @@ Apify.main(async () => {
         launchPuppeteerFunction: async (options) => {
             return Apify.launchPuppeteer({
                 ...options,
+                devtools: debugLog,
                 useChrome: Apify.isAtHome(),
                 stealth: useStealth,
                 stealthOptions: {

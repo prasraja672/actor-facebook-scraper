@@ -211,6 +211,13 @@ export const getPostUrls = async (page: Page, {
         }
 
         await sleep(scrollingSleep);
+
+        try {
+            await page.click('a[ajaxify^="/pages_reaction_units/more/"]', { delay: scrollingSleep });
+            log.debug('Clicking see more', { currentUrl });
+        } catch (e) {
+            log.debug(`More click`, { e: e.message, currentUrl });
+        }
     };
 
     const interceptAjax = async (res: Response) => {
@@ -819,6 +826,10 @@ export const getPostComments = async (
                             if (!bodyChanged && clickTries > 3) {
                                 return true;
                             }
+
+                            await page.evaluate(() => {
+                                document.querySelectorAll('h6.accessible_elem ~ ul > li').forEach(s => s.remove());
+                            });
 
                             return max ? comments.size >= max : false;
                         },
