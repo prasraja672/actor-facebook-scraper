@@ -411,6 +411,14 @@ Apify.main(async () => {
                     });
                 }
 
+                if (await page.$eval('title', (el) => el.textContent === 'Error')) {
+                    throw new InfoError('Facebook internal error, maybe it\'s going through instability, it will be retried', {
+                        url: request.url,
+                        namespace: 'internal',
+                        userData,
+                    });
+                }
+
                 if (label !== LABELS.LISTING && await isNotFoundPage(page)) {
                     request.noRetry = true;
 
@@ -598,10 +606,10 @@ Apify.main(async () => {
                     // We want to inform the rich error before throwing
                     log.warning(e.message, e.toJSON());
 
-                    if (['captcha', 'mobile-meta', 'getFieldInfos'].includes(e.meta.namespace)) {
+                    if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal'].includes(e.meta.namespace)) {
                         // the session is really bad
                         session?.retire();
-                        await puppeteerPool.retire(page.browser());
+                        // await puppeteerPool.retire(page.browser());
                     }
                 }
 

@@ -270,7 +270,6 @@
             "title": "Max post date",
             "description": "Posts are retrieved from newest to oldest. Use this setting to limit how many posts in the past it should fetch.",
             "example": "3 days",
-            "prefill": "2020-01-01",
             "type": "string",
             "editor": "textfield"
         },
@@ -278,7 +277,6 @@
             "title": "Min post date",
             "description": "Set the minimum post date, remembering that posts start from newest to oldest, it will skip the newest posts up to the specified date",
             "example": "2020-01-01",
-            "prefill": "2020-01-01",
             "type": "string",
             "editor": "textfield"
         },
@@ -294,7 +292,6 @@
             "title": "Max comment date",
             "description": "Limit the minimum date for comments",
             "example": "2020-01-01",
-            "prefill": "2020-01-01",
             "type": "string",
             "editor": "textfield"
         },
@@ -309,7 +306,6 @@
         "maxReviewDate": {
             "title": "Max review date",
             "description": "Limit the date of the reviews",
-            "prefill": "2020-01-01",
             "example": "2020-01-01",
             "type": "string",
             "editor": "textfield"
