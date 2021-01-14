@@ -17,6 +17,13 @@ export interface FbGraphQl {
                         author: {
                             name: string;
                             url: string;
+                            id: string;
+                            profile_picture_depth_0: {
+                                uri: string;
+                            }
+                            profile_picture_depth_1_legacy: {
+                                uri: string;
+                            }
                         };
                         url: string;
                         body: {
@@ -99,6 +106,7 @@ export interface FbComment {
     date: string;
     text: string | null; // image / gif comment
     profileUrl: string | null;
+    profilePicture: string | null;
     url: string;
 }
 

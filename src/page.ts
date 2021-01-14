@@ -659,7 +659,12 @@ export const getPostComments = async (
                                     comments.set(p.id, {
                                         date: convertDate(p.created_time, true),
                                         name: get(p, ['author', 'name']),
-                                        profileUrl: get(p, ['author', 'url']),
+                                        profileUrl: get(p, ['author', 'url']) || null,
+                                        profilePicture: get(
+                                            p,
+                                            ['author', 'profile_picture_depth_0', 'uri'],
+                                            get(p, ['author', 'profile_picture_depth_1_legacy', 'uri']),
+                                        ) || null,
                                         text: get(p, ['body', 'text']) || null,
                                         url: p.url,
                                     });
