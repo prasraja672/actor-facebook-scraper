@@ -1,42 +1,72 @@
-# Facebook Page Crawler
-
+# Facebook Pages Scraper
+​
 Extract public information from Facebook Pages.
-
+​
 - [Features](#features)
-- [Usage](#usage)
+- [Cost of usage](#cost-of-usage)
+- [Detailed step-by-step guide](#detailed-step-by-step-guide)
 - [Input](#input)
 - [Output](#output)
-- [Expected Consumption](#expected-consumption)
 - [Displaying only posts without page information](#displaying-only-posts-without-page-information)
-- [Limitations / Caveats](#limitations--caveats)
-
+- [Limitations](#limitations)
+- [Versioning](#versioning)
+- [Upcoming features](#upcoming-features)
+- [License](#license)
+​
 ## Features
-
-* Extract page content and optionally filter them by minimum and maximum dates:
-  * Scrape pages' posts
-  * Scrape posts' comments
-  * Scrape pages' reviews
+​
+* Extract content from a Facebook page:
+  * Scrape posts
+  * Scrape comments
+  * Scrape reviews
+  * Option to filter by minimum and maximum date
 * Get all page information, including:
   * Likes
-  * Address (includes latitude / longitude)
+  * Address (includes latitude/longitude)
   * Instagram profile
   * Twitter profile
   * Website
   * Services
-  * Messenger url
-  * Telephone
+  * Messenger URL
+  * Telephone number
   * Check-ins
-  * All other provided text information like awards, price range, mission
+  * All other provided text information, e.g. awards, price range, mission
 * Fetch businesses from the directory on https://www.facebook.com/biz/directory/
+​
+## Cost of usage
+​
+If you're new to Apify and haven't used up your 30-day trial of 20 shared proxies, you can run the actor for free.
+​
+If you are planning to use this actor to regularly scrape data from Facebook pages, please understand that exact usage varies and depends on each specific case (list of URLs, total amount, set up memory, country, etc).
+​
+To be more specific, you can expect that, e.g. under our Personal plan (USD 49 per month) you would be able to scrape around 20-30k posts monthly (without comments and reviews) or 10-20k posts monthly (including comments). When you scrape comments and reviews, the number decreases, as each post has a different URL and is scraped separately.
+​
+The cost of running your Facebook scraper on the Apify platform will depend on compute units (CU), memory, and datacenter proxies. Each of these can be adjusted in one of our custom plans.
 
-## Usage
+If you want an exact quote, or have any technical questions, just email support@apify.com.
+​
+### Detailed usage information
 
-If you want to run the actor on the Apify platform, you need to have at least some Apify proxy group so that Facebook doesn't block you. Since it uses Puppeteer, the minimum memory for running is 2048 MB.
+One page and the posts on that page will take around 1-2 minutes for the default amount of information (3 posts, 15 comments) to be scraped. This estimate also depends on the proxy type used (i.e. residential vs. datacenter), block rate, retries, memory, and CPU allocated.
+​
+Usually, more concurrency is not better. 5-10 concurrent tasks can each finish in around 30-60 seconds, while 20 concurrent tasks can take up to 300 seconds each. You can limit concurrency by setting the MAX_CONCURRENCY variable.
 
+The actor uses Puppeteer and the minimum memory you need to run it is 2048 MB. An actor with 2048 MB takes an average of 0.015 CU for each page on default settings. More "input page URLs" means more memory will be needed to scrape all pages.
+
+### Usage tip
+
+Limit the maxPosts parameter with a reasonable number so that you do not run out of memory and your results are saved. The scraping is carried out in such a way that, while scrolling the page, partial content is kept in memory until scrolling finishes.
+​
+## Detailed step-by-step guide
+​
+Read our tutorial on how to use the scraper. It includes screenshots and examples of how to scrape the Apify Facebook page, along with handy tips and advice on proxy usage.
+
+https://blog.apify.com/how-to-scrape-facebook-pages-posts-comments-photos-and-more-425ebef352d8
+​
 ## Input
-
+​
 Example input, only `startUrls` and `proxyConfiguration` are required (check `INPUT_SCHEMA.json` for settings):
-
+​
 ```jsonc
 {
     "startUrls": [
@@ -62,9 +92,9 @@ Example input, only `startUrls` and `proxyConfiguration` are required (check `IN
     }
 }
 ```
-
+​
 ## Output
-
+​
 ```jsonc
 {
     "categories": ["Hotel"],
@@ -130,52 +160,39 @@ Example input, only `startUrls` and `proxyConfiguration` are required (check `IN
     "verified": false,
 }
 ```
-
-## Expected Consumption
-
-One page and posts take around 1-2 minutes for the default amount of information (3 posts, 15 comments) to be generated, also depends on the proxy type used (`RESIDENTIAL` vs `DATACENTER`), block rate, retries, memory and CPU provided.
-
-Usually, more concurrency is not better, while 5-10 concurrent tasks can finish each around 30-60s. A "20-concurrency" run can take up to 300s each. You can limit your concurrency by setting the `MAX_CONCURRENCY` environment variable on your actor.
-
-A 2048MB actor takes an average `0.015` CU for each page on default settings. More "input page URLs" means more memory needed to scrape all pages.
-
-**WARNING**: Don't use a limit too high for `maxPosts` as you can lose everything due to out of memory, or it may never finish. While scrolling the page, the partial content is kept in memory until the scrolling finishes.
-
-Take into account the need for proxies that are included in the costs.
-
 ## Displaying only posts without page information
-
-You can use the `unwind` parameter to display only the posts from your dataset on the platform, as such:
-
+​
+You can use the `unwind` parameter to display only the posts from your dataset on the platform, i.e.:
+​
 ```
 https://api.apify.com/v2/datasets/zbg3vVF3NnXGZfdsX/items?format=json&clean=1&unwind=posts&fields=posts,title,pageUrl
 ```
-
-`unwind` will turn the `posts` property on the dataset to become the dataset items themselves. the `fields` parameters makes sure to only include the fields that are important
-
-## Limitations / Caveats
-
-* Personal profiles and groups aren't accessible at the moment
-* Pages "Likes" count is a best-effort. The mobile page doesn't provide the count, and some languages don't provide any at all. So if a page has 1.9M, the number will most likely be 1900000 instead of the exact number.
+​
+`unwind` will turn the `posts` property on the dataset to become dataset items themselves. the `fields` parameters makes sure to only include the fields that are important.
+​
+## Limitations
+​
+* Personal profiles and groups aren't accessible yet
+* The "Likes" count is a best effort. The mobile page doesn't provide the count, and some languages don't provide any at all. So if a page has, e.g. over 1.9M likes, the number will most likely be 1,900,000 instead of an exact number.
 * No content, stats or comments for live stream posts
-* New reviews don't contain a rating from 1 to 5, but rather is positive or negative
-* Cut-off date for posts happen on the original posted date, not edited date, i.e: posts show as `February 20th 2:11AM`, but that's the edited date, the actual post date is `February 19th 11:31AM` provided on the DOM
-* The order of items aren't necessarily the same as seen on the page, and not sorted by date
-* Comments of comments (nested comments / conversations) aren't included in the output, only top-level comments on the posts.
-
+* New reviews don't contain a rating from 1 to 5, but are rather positive or negative
+* The cut-off date for posts happen on the original posted date, not the edited date, i.e: posts show as `February 20th 2:11AM`, but that's the edited date, the actual post date is `February 19th 11:31AM` provided on the DOM
+* The order of items isn't necessarily the same as seen on the page, and is not sorted by date
+* Comments on comments (nested comments / conversations) aren't included in the output, only top-level comments on the posts.
+​
 ## Versioning
-
+​
 This project adheres to semver.
-
-* Major versions means a change in the output or input format, and change in behavior.
+​
+* Major versions means a change in the output or input format, and a change in behavior.
 * Minor versions mean new features
 * Patch versions mean bug fixes/optimizations (changes to `README.md` aren't tagged)
-
-## Upcoming
-
+​
+## Upcoming features
+​
 * Separated mode for posts, comments, and reviews (breaking change)
 * Public groups
-
+​
 ## License
-
+​
 Apache-2.0
