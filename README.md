@@ -34,16 +34,23 @@ Extract public information from Facebook Pages.
 * Fetch businesses from the directory on https://www.facebook.com/biz/directory/
 ​
 ## Cost of usage
-​
-If you're new to Apify and haven't used up your 30-day trial of 20 shared proxies, you can run the actor for free.
-​
-If you are planning to use this actor to regularly scrape data from Facebook pages, please understand that exact usage varies and depends on each specific case (list of URLs, total amount, set up memory, country, etc).
-​
-To be more specific, you can expect that, e.g. under our Personal plan (USD 49 per month) you would be able to scrape around 20-30k posts monthly (without comments and reviews) or 10-20k posts monthly (including comments). When you scrape comments and reviews, the number decreases, as each post has a different URL and is scraped separately.
-​
-The cost of running your Facebook scraper on the Apify platform will depend on compute units (CU), memory, and datacenter proxies. Each of these can be adjusted in one of our custom plans.
 
-If you want an exact quote, or have any technical questions, just email support@apify.com.
+There are two main components to take into account if you want to run Facebook Scraper on the Apify platform:
+
+- [Compute units](https://apify.com/pricing/actors) - Used for running the scraper
+- [Minimum Actor memory](https://apify.com/pricing) - The actor uses Puppeteer and the minimum memory you need to run it is 2048 MB. More "input page URLs" means more memory will be needed to scrape all pages.
+
+The usage costs differ depending on depends on each specific case: list of URLs, total amount, set up memory, country, etc. When you scrape comments and reviews, the number of scraped posts decreases, as each post has a different URL and is scraped separately.
+
+### Free plan
+
+Apify provides a free plan where you can test your setup. With $5 platform usage credits, 30-day trial of 20 shared proxies and 4 GB maximum actor memory you can try the actor for free.
+
+### Example pricing
+
+Based on Apify's pricing at the time of writing the Personal plan ($49) would allow you to scrape about:
+- 20-30k posts monthly without comments and reviews
+- 10-20k posts monthly including comments
 ​
 ### Detailed usage information
 
