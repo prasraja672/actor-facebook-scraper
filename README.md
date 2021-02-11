@@ -42,6 +42,10 @@ There are two main components to take into account if you want to run Facebook S
 
 The usage costs differ depending on depends on each specific case: list of URLs, total amount, set up memory, country, etc. When you scrape comments and reviews, the number of scraped posts decreases, as each post has a different URL and is scraped separately.
 
+### Usage tip
+
+Limit the maxPosts parameter with a reasonable number so that you do not run out of memory and your results are saved. The scraping is carried out in such a way that, while scrolling the page, partial content is kept in memory until scrolling finishes.
+​
 ### Free plan
 
 Apify provides a free plan where you can test your setup. With $5 platform usage credits, 30-day trial of 20 shared proxies and 4 GB maximum actor memory you can try the actor for free.
@@ -51,19 +55,7 @@ Apify provides a free plan where you can test your setup. With $5 platform usage
 Based on Apify's pricing at the time of writing the Personal plan ($49) would allow you to scrape about:
 - 20-30k posts monthly without comments and reviews
 - 10-20k posts monthly including comments
-​
-### Detailed usage information
 
-One page and the posts on that page will take around 1-2 minutes for the default amount of information (3 posts, 15 comments) to be scraped. This estimate also depends on the proxy type used (i.e. residential vs. datacenter), block rate, retries, memory, and CPU allocated.
-​
-Usually, more concurrency is not better. 5-10 concurrent tasks can each finish in around 30-60 seconds, while 20 concurrent tasks can take up to 300 seconds each. You can limit concurrency by setting the MAX_CONCURRENCY variable.
-
-The actor uses Puppeteer and the minimum memory you need to run it is 2048 MB. An actor with 2048 MB takes an average of 0.015 CU for each page on default settings. More "input page URLs" means more memory will be needed to scrape all pages.
-
-### Usage tip
-
-Limit the maxPosts parameter with a reasonable number so that you do not run out of memory and your results are saved. The scraping is carried out in such a way that, while scrolling the page, partial content is kept in memory until scrolling finishes.
-​
 ## Detailed step-by-step guide
 ​
 Read our tutorial on how to use the scraper. It includes screenshots and examples of how to scrape the Apify Facebook page, along with handy tips and advice on proxy usage.
