@@ -55,6 +55,8 @@ export const storyFbToDesktopPermalink = (url?: string | null) => {
         }
     });
 
+    parsed.searchParams.delete('__tn__'); // force deletion
+
     return parsed;
 };
 
@@ -163,7 +165,7 @@ const initializeUserAgents = () => {
             && /^Mozilla/.test(userAgent)
             && !/Firefox/.test(userAgent)
             && /\d$/.test(userAgent)
-            && /(X11|Win64|Intel Mac OS X)/.test(userAgent)
+            && /(X11|Intel Mac OS X)/.test(userAgent)
             && userAgent.length <= 120
         );
     });
@@ -368,6 +370,7 @@ export const pageSelectors = {
 
                 try {
                     article.parentElement!.parentElement!.remove();
+                    await new Promise((r) => setTimeout(r, 400));
                 } catch (e) {} // eslint-disable-line
 
                 try {

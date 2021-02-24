@@ -162,8 +162,8 @@ export const getPostUrls = async (page: Page, {
 
                 control.postpone();
 
-                if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.1))) {
-                    log.info('Stopping getting posts', { olderCount, size: urls.size, threshold: Math.ceil(urls.size / 1.4) });
+                if (max && (urls.size >= max || olderCount > Math.ceil(urls.size / 1.04))) {
+                    log.info('Stopping getting posts', { olderCount, size: urls.size, threshold: Math.ceil(urls.size / 1.04) });
 
                     finish.resolve();
                     return;
@@ -674,8 +674,8 @@ export const getPostComments = async (
 
                         const hasNext = get(data, ['page_info', 'has_next_page']);
 
-                        if (hasNext === false || comments.size >= max || olderCount > Math.ceil(comments.size / 1.1)) {
-                            log.debug('Posts comments', { hasNext, size: comments.size, olderCount, threshold: Math.ceil(comments.size / 1.1) });
+                        if (hasNext === false || comments.size >= max || olderCount > Math.ceil(comments.size / 1.04)) {
+                            log.debug('Posts comments', { hasNext, size: comments.size, olderCount, threshold: Math.ceil(comments.size / 1.04) });
                             finish.resolve();
                         }
                     }

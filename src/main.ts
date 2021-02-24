@@ -241,6 +241,7 @@ Apify.main(async () => {
         maxRequestRetries: 10,
         maxConcurrency,
         puppeteerPoolOptions: {
+            useIncognitoPages: true,
             maxOpenPagesPerInstance: maxConcurrency,
         },
         proxyConfiguration: proxyConfig || undefined,
@@ -345,12 +346,10 @@ Apify.main(async () => {
             });
 
             try {
-                const response = await page.goto(request.url, {
+                return await page.goto(request.url, {
                     waitUntil: 'networkidle2',
                     timeout: 60000,
                 });
-
-                return response;
             } catch (e) {
                 log.exception(e, 'gotoFunction', {
                     url: request.url,
@@ -359,7 +358,7 @@ Apify.main(async () => {
 
                 await puppeteerPool.retire(page.browser());
 
-                return null;
+                throw e;
             }
         },
         handlePageFunction: async ({ request, page, puppeteerPool, session }) => {
@@ -370,7 +369,7 @@ Apify.main(async () => {
             log.debug(`Visiting page ${request.url}`);
 
             try {
-                if (page.url().includes('login.php?next=')) {
+                if (page.url().includes('?next=')) {
                     throw new Error(`Content needs login to work, this will be retried but most likely won't work as expected`);
                 }
 
@@ -609,7 +608,8 @@ Apify.main(async () => {
                     if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal'].includes(e.meta.namespace)) {
                         // the session is really bad
                         session?.retire();
-                        // await puppeteerPool.retire(page.browser());
+
+                        await puppeteerPool.retire(page.browser());
                     }
                 }
 
