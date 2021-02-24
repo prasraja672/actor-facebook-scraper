@@ -249,7 +249,7 @@ Apify.main(async () => {
             return Apify.launchPuppeteer({
                 ...options,
                 devtools: debugLog,
-                useChrome: Apify.isAtHome(),
+                // useChrome: Apify.isAtHome(),
                 stealth: useStealth,
                 stealthOptions: {
                     addLanguage: false,
@@ -263,10 +263,6 @@ Apify.main(async () => {
                     mockDeviceMemory: false,
                     mockChromeInIframe: false,
                 },
-                args: [
-                    ...(options as any)?.args,
-                    '--disable-setuid-sandbox',
-                ],
             } as any);
         },
         persistCookiesPerSession: sessionStorage !== '',
