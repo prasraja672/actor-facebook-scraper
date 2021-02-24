@@ -370,7 +370,11 @@ Apify.main(async () => {
 
             try {
                 if (page.url().includes('?next=')) {
-                    throw new Error(`Content needs login to work, this will be retried but most likely won't work as expected`);
+                    throw new InfoError(`Content needs login to work, this will be retried but most likely won't work as expected`, {
+                        url: request.url,
+                        namespace: 'login',
+                        userData,
+                    });
                 }
 
                 if (userData.useMobile) {
@@ -605,7 +609,7 @@ Apify.main(async () => {
                     // We want to inform the rich error before throwing
                     log.warning(e.message, e.toJSON());
 
-                    if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal'].includes(e.meta.namespace)) {
+                    if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal', 'login'].includes(e.meta.namespace)) {
                         // the session is really bad
                         session?.retire();
 
