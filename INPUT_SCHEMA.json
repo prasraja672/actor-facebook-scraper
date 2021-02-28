@@ -266,6 +266,13 @@
             "prefill": 3,
             "editor": "number"
         },
+        "minPosts": {
+            "title": "Minimum post count",
+            "description": "What is the expected minimum number of posts before considering it a successiful run",
+            "type": "integer",
+            "default": 0,
+            "editor": "number"
+        },
         "maxPostDate": {
             "title": "Max post date",
             "description": "Posts are retrieved from newest to oldest. Use this setting to limit how many posts in the past it should fetch.",
@@ -288,8 +295,15 @@
             "prefill": 15,
             "editor": "number"
         },
+        "minPostComments": {
+            "title": "Minimum post comments",
+            "description": "What is the expected minimum number of comments in each post before considering it a successiful run",
+            "type": "integer",
+            "default": 0,
+            "editor": "number"
+        },
         "maxCommentDate": {
-            "title": "Max comment date",
+            "title": "Minimum",
             "description": "Limit the minimum date for comments",
             "example": "2020-01-01",
             "type": "string",
