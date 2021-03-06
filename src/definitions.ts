@@ -58,6 +58,8 @@ export interface Schema {
     sessionStorage?: string;
     useStealth?: boolean;
     debugLog?: boolean;
+    minPostComments?: number;
+    minPosts?: number;
 }
 
 export interface FbPageInfo {

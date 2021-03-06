@@ -10,29 +10,6 @@ import type { FbLocalBusiness, FbSection, FbLabel, FbReview } from './definition
 const { log, sleep } = Apify.utils;
 
 /**
- * Returns unix timestamp
- */
-export const parseRelativeDate = (dateFrom: string) => {
-    if (!dateFrom) {
-        return;
-    }
-
-    const parsedDateFrom = new Date(dateFrom);
-    if (!Number.isNaN(parsedDateFrom.getTime())) {
-        return parsedDateFrom.getTime();
-    }
-    const split = dateFrom.split(' ', 2);
-    const now = moment();
-    const difference = now.clone().subtract(+split[0] as any, split[1]);
-    if (now !== difference) {
-        // Means the subtraction worked
-        return difference.valueOf();
-    }
-
-    throw new Error('WRONG INPUT: dateFrom is not a valid date. Please use date in YYYY-MM-DD or format like "1 week" or "20 days"');
-};
-
-/**
  * Takes a story.php and turns into a cleaned desktop permalink.php
  */
 export const storyFbToDesktopPermalink = (url?: string | null) => {
@@ -67,8 +44,8 @@ export const storyFbToDesktopPermalink = (url?: string | null) => {
  * Returns "Infinity" if value is not provided or falsy
  */
 export function convertDate(value: string | number | Date | undefined | null, isoString: true): string;
-export function convertDate(value?: string | number | Date | null): number;
-export function convertDate(value?: string | number | Date | null, isoString = false) {
+export function convertDate(value?: string | number | Date | null): number; // eslint-disable-line no-redeclare
+export function convertDate(value?: string | number | Date | null, isoString = false) { // eslint-disable-line no-redeclare
     if (!value) {
         return isoString ? '2100-01-01T00:00:00.000Z' : Infinity;
     }
@@ -94,30 +71,35 @@ export function convertDate(value?: string | number | Date | null, isoString = f
 }
 
 /**
- * Check if the provided date is greater/less than the minimum
- */
-export const cutOffDate = (base?: string | number | null, inverse = false) => {
-    let d = convertDate(base);
-
-    if (!Number.isFinite(d)) {
-        d *= inverse ? 1 : -1;
-    }
-
-    return (compare: Date | string | number) => {
-        return inverse ? convertDate(compare) <= d : convertDate(compare) >= d;
-    };
-};
-
-/**
  * Resolves a promise from the outside
  */
 export const deferred = <T = any>() => {
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     let resolve: (value?: T | PromiseLike<T>) => void = () => {};
-    const promise = new Promise<T>((r) => {
-        resolve = r as any;
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    let reject: (error: Error) => void = () => {};
+    let resolved = false;
+
+    const promise = new Promise<T | undefined>((r1, r2) => {
+        resolve = (arg) => {
+            resolved = true;
+            r1(arg);
+        };
+
+        reject = (arg) => {
+            resolved = true;
+            r2(arg);
+        };
     });
-    return { promise, resolve };
+
+    return {
+        promise,
+        resolve,
+        reject,
+        get resolved() {
+            return resolved;
+        },
+    };
 };
 
 /**
@@ -219,7 +201,9 @@ export const createPageSelector = <E extends Element, C extends (els: ElementHan
         if (!await page.$(selector)) {
             if (wait > 0) {
                 try {
-                    await page.waitForSelector(selector, { timeout: wait });
+                    await page.waitForSelector(selector, {
+                        timeout: wait,
+                    });
                 } catch (e) {
                     if (e.name !== 'TimeoutError') {
                         // a non timeout error means something else, we need
@@ -355,33 +339,37 @@ export const pageSelectors = {
         });
     }),
     // get metadata from posts
-    posts: createPageSelector('abbr[data-utime]', 'posts', async (els) => {
+    posts: createPageSelector(CSS_SELECTORS.POST_TIME, 'posts', async (els) => {
         return evaluateFilterMap(els, async (el) => {
             const article = el.closest<HTMLDivElement>('[role="article"]');
 
             if (article) {
                 const isPinned = !!(article.querySelector('i[data-tooltip-content].img'));
                 const { utime } = (el as HTMLElement).dataset;
-                const url = el.closest<HTMLAnchorElement>('a[href]')?.href || '';
+                const url = el.closest<HTMLAnchorElement>('a[href]:not([data-ft])')?.href;
 
                 if (!utime || !url) {
                     return;
                 }
 
+                const value = (() => {
+                    try {
+                        const result = {
+                            publishedTime: +utime * 1000,
+                            url,
+                            isPinned,
+                        };
+
+                        return result;
+                    } catch (e) {} // eslint-disable-line
+                })();
+
                 try {
                     article.parentElement!.parentElement!.remove();
-                    await new Promise((r) => setTimeout(r, 400));
+                    await new Promise((r) => setTimeout(r, 500));
                 } catch (e) {} // eslint-disable-line
 
-                try {
-                    const result = {
-                        publishedTime: +utime * 1000,
-                        url,
-                        isPinned,
-                    };
-
-                    return result;
-                } catch (e) {} // eslint-disable-line
+                return value;
             }
         });
     }),
@@ -663,7 +651,7 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
             return false;
         }
 
-        return [...histogram].every(val => (num > val));
+        return [...histogram].every(val => (num !== val));
     };
 
     const shouldContinue = async ({ scrollChanged, bodyChanged }: {
@@ -792,4 +780,247 @@ export const clickSeeMore = async (page: Page) => {
     }
 
     return clicks > 0;
+};
+
+/**
+ * Do a generic check when using Apify Proxy
+ */
+export const proxyConfiguration = async ({
+    proxyConfig,
+    required = true,
+    force = Apify.isAtHome(),
+    blacklist = ['GOOGLESERP'],
+    hint = [],
+}: {
+    proxyConfig: any,
+    required?: boolean,
+    force?: boolean,
+    blacklist?: string[],
+    hint?: string[],
+}) => {
+    const configuration = await Apify.createProxyConfiguration(proxyConfig);
+
+    // this works for custom proxyUrls
+    if (required) {
+        if (!configuration || (!configuration.usesApifyProxy && !configuration.proxyUrls?.length) || !configuration.newUrl()) {
+            throw new Error(`\n=======\nYou're required to provide a valid proxy configuration\n\n=======`);
+        }
+    }
+
+    // check when running on the platform by default
+    if (force) {
+        // only when actually using Apify proxy it needs to be checked for the groups
+        if (configuration?.usesApifyProxy) {
+            if (blacklist.some((blacklisted) => configuration.groups?.includes(blacklisted))) {
+                throw new Error(`\n=======\nThese proxy groups cannot be used in this actor. Choose other group or contact support@apify.com to give you proxy trial:\n\n*  ${blacklist.join('\n*  ')}\n\n=======`);
+            }
+
+            // specific non-automatic proxy groups like RESIDENTIAL, not an error, just a hint
+            if (hint.length && !hint.some((group) => configuration.groups?.includes(group))) {
+                Apify.utils.log.info(`\n=======\nYou can pick specific proxy groups for better experience:\n\n*  ${hint.join('\n*  ')}\n\n=======`);
+            }
+        }
+    }
+
+    return configuration as Apify.ProxyConfiguration | undefined;
+};
+
+export interface MinMax {
+    min?: number | string;
+    max?: number | string;
+}
+
+const parseTimeUnit = (value: any) => {
+    if (!value) {
+        return null;
+    }
+
+    const [, number, unit] = `${value}`.match(/^(\d+) (minute|second|day|hour|month|year|week)s?$/i) || [];
+
+    if (+number && unit) {
+        return moment().subtract(+number, unit as any);
+    }
+
+    return moment(value);
+};
+
+export type MinMaxDates = ReturnType<typeof minMaxDates>
+
+/**
+ * Generate a function that can check date intervals depending on the input
+ */
+export const minMaxDates = ({ min, max }: MinMax) => {
+    const minDate = parseTimeUnit(min);
+    const maxDate = parseTimeUnit(max);
+
+    if (minDate && maxDate && maxDate.diff(minDate) < 0) {
+        throw new Error(`Minimum date ${minDate.toString()} needs to be less than max date ${maxDate.toString()}`);
+    }
+
+    return {
+        /**
+         * cloned min date, if set
+         */
+        get minDate() {
+            return minDate?.clone();
+        },
+        /**
+         * cloned max date, if set
+         */
+        get maxDate() {
+            return maxDate?.clone();
+        },
+        /**
+         * compare the given date/timestamp to the time interval
+         */
+        compare(time: string | number) {
+            const base = moment(time);
+            return (minDate ? minDate.diff(base) <= 0 : true) && (maxDate ? maxDate.diff(base) >= 0 : true);
+        },
+    };
+};
+
+const images = {
+    png: {
+        contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQYV2P4DwABAQEAWk1v8QAAAABJRU5ErkJggg==', 'base64'),
+    },
+    gif: {
+        contentType: 'image/gif',
+        body: Buffer.from('R0lGODlhAQABAIAAAP///wAAACwAAAAAAQABAAACAkQBADs=', 'base64'),
+    },
+    jpg: {
+        contentType: 'image/jpeg',
+        body: Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=', 'base64'),
+    },
+};
+
+/**
+ * Cache page resources depending on regex paths
+ */
+export const resourceCache = (paths: RegExp[]) => {
+    // Cache resources to ease the data transfer
+    const cache = new Map<string, {
+        loaded: boolean,
+        contentType?: string,
+        content?: Buffer,
+        headers?: any
+    }>();
+
+    return async (page: Page) => {
+        await page.setRequestInterception(true);
+
+        page.on('request', async (req) => {
+            const url = req.url();
+
+            if (req.resourceType() === 'image') {
+                // serve empty images so the `onload` events don't fail
+                if (url.includes('.jpg') || url.includes('.jpeg')) {
+                    return req.respond(images.jpg);
+                }
+
+                if (url.includes('.png')) {
+                    return req.respond(images.png);
+                }
+
+                if (url.includes('.gif')) {
+                    return req.respond(images.gif);
+                }
+            } else if (['script', 'stylesheet'].includes(req.resourceType()) && paths.some((path) => path.test(url))) {
+                const content = cache.get(url);
+
+                // log.debug('Cache', { url, headers: content?.headers, type: content?.contentType, length: content?.content?.length });
+
+                if (content?.loaded === true) {
+                    return req.respond({
+                        body: content.content,
+                        status: 200,
+                        contentType: content.contentType,
+                        headers: content.headers,
+                    });
+                }
+
+                cache.set(url, {
+                    loaded: false,
+                });
+            }
+
+            await req.continue();
+        });
+
+        page.on('response', async (res) => {
+            if (['script', 'stylesheet'].includes(res.request().resourceType())) {
+                const url = res.url();
+                const content = cache.get(url);
+
+                if (content && !content.loaded) {
+                    const buffer = await res.buffer();
+
+                    /* eslint-disable */
+                    const {
+                        date,
+                        expires,
+                        'last-modified': lastModified,
+                        'content-length': contentLength,
+                        ...headers
+                    } = res.headers();
+                    /* eslint-enable */
+
+                    cache.set(url, {
+                        contentType: res.headers()['content-type'],
+                        loaded: buffer.length > 0,
+                        content: buffer,
+                        headers,
+                    });
+                }
+            }
+        });
+    };
+};
+
+export const dateRangeItemCounter = (minMax: MinMaxDates) => {
+    let total = 0;
+    let older = 0;
+    let newer = 0;
+    let outOfRange = 0;
+    let empty = 0;
+
+    return {
+        stats() {
+            return {
+                total,
+                outOfRange,
+                older,
+                newer,
+                empty,
+            };
+        },
+        empty(predicate: boolean) {
+            if (!predicate) {
+                empty++;
+            }
+        },
+        add(value: number) {
+            total += value;
+        },
+        time(value: string | number) {
+            if (!minMax.compare(value)) {
+                outOfRange++;
+            }
+
+            if ((minMax.maxDate?.diff(value) ?? 0) > 0) {
+                older++;
+            }
+
+            if ((minMax.minDate?.diff(value) ?? 0) > 0) {
+                newer++;
+            }
+
+            return minMax.compare(value);
+        },
+        isOver() {
+            return (outOfRange > 0 && (older && total ? older / total > 0.7 : false))
+                || (empty && total ? empty / total > 0.2 : false);
+        },
+    };
 };

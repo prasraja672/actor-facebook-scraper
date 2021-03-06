@@ -10,8 +10,10 @@ import {
     generateSubpagesFromUrl,
     stopwatch,
     executeOnDebug,
-    parseRelativeDate,
     storyFbToDesktopPermalink,
+    proxyConfiguration,
+    minMaxDates,
+    resourceCache,
 } from './functions';
 import {
     getPagesFromListing,
@@ -41,7 +43,6 @@ Apify.main(async () => {
 
     const {
         startUrls,
-        proxyConfiguration,
         maxPosts = 3,
         maxPostDate,
         minPostDate,
@@ -58,6 +59,8 @@ Apify.main(async () => {
         sessionStorage = '',
         useStealth = false,
         debugLog = false,
+        minPostComments,
+        minPosts,
     } = input;
 
     if (debugLog) {
@@ -72,8 +75,14 @@ Apify.main(async () => {
         throw new Error('You must provide a finite number for "maxPostComments" input');
     }
 
-    if (Apify.isAtHome() && !proxyConfiguration) {
-        throw new Error('You must specify a proxy');
+    const proxyConfig = await proxyConfiguration({
+        proxyConfig: input.proxyConfiguration,
+        hint: ['RESIDENTIAL'],
+        required: true,
+    });
+
+    if (Apify.isAtHome() && !proxyConfig?.groups?.includes('RESIDENTIAL')) {
+        log.warning(`!!!!!!!!!!!!!!!!!!!!!!!\n\nYou're not using RESIDENTIAL proxy group, it won't work as expected. Contact support@apify.com or on Intercom to give you proxy trial\n\n!!!!!!!!!!!!!!!!!!!!!!!`);
     }
 
     let handlePageTimeoutSecs = Math.round(60 * (((maxPostComments + maxPosts) || 10) * 0.03)) + 600; // minimum 600s
@@ -106,32 +115,35 @@ Apify.main(async () => {
     log.info(`Starting crawler with ${startUrlsRequests.length()} urls`);
     log.info(`Using language "${(LANGUAGES as any)[language]}" (${language})`);
 
-    const processedMaxPostDate = maxPostDate ? parseRelativeDate(maxPostDate) : null;
+    const postDate = minMaxDates({
+        max: minPostDate,
+        min: maxPostDate,
+    });
 
-    if (scrapePosts && processedMaxPostDate) {
-        log.info(`\n-------\n\nGetting posts from ${new Date(processedMaxPostDate).toLocaleString()} and newer\n\n-------`);
+    if (scrapePosts) {
+        if (postDate.maxDate) {
+            log.info(`\n-------\n\nGetting posts from ${postDate.maxDate.toLocaleString()} and older\n\n-------`);
+        }
+
+        if (postDate.minDate) {
+            log.info(`\n-------\n\nGetting posts from ${postDate.minDate.toLocaleString()} and newer\n\n-------`);
+        }
     }
 
-    const processedMinPostDate = minPostDate ? parseRelativeDate(minPostDate) : null;
+    const commentDate = minMaxDates({
+        min: maxCommentDate,
+    });
 
-    if (scrapePosts && processedMinPostDate) {
-        log.info(`\n-------\n\nGetting posts from ${new Date(processedMinPostDate).toLocaleString()} and older\n\n-------`);
+    if (commentDate.minDate) {
+        log.info(`Getting comments from ${commentDate.minDate.toLocaleString()} and newer`);
     }
 
-    if (scrapePosts && processedMaxPostDate && processedMinPostDate && processedMinPostDate < processedMaxPostDate) {
-        throw new Error(`You can't specify a minimum post date less than maximum post date:\n\n Minimum: ${new Date(processedMinPostDate).toLocaleString()} / Maximum: ${new Date(processedMaxPostDate).toLocaleString()}`);
-    }
+    const reviewDate = minMaxDates({
+        min: maxReviewDate,
+    });
 
-    const processedCommentDate = maxCommentDate ? parseRelativeDate(maxCommentDate) : null;
-
-    if (processedCommentDate) {
-        log.info(`Getting comments from ${new Date(processedCommentDate).toLocaleString()} and newer`);
-    }
-
-    const processedReviewDate = maxReviewDate ? parseRelativeDate(maxReviewDate) : null;
-
-    if (processedReviewDate) {
-        log.info(`Getting reviews from ${new Date(processedReviewDate).toLocaleString()} and newer`);
+    if (reviewDate.minDate) {
+        log.info(`Getting reviews from ${reviewDate.minDate.toLocaleString()} and newer`);
     }
 
     const requestQueue = await Apify.openRequestQueue();
@@ -227,9 +239,9 @@ Apify.main(async () => {
     }
 
     const maxConcurrency = process.env?.MAX_CONCURRENCY ? +process.env.MAX_CONCURRENCY : undefined;
-    const proxyConfig = await Apify.createProxyConfiguration({
-        ...proxyConfiguration,
-    });
+    const cache = resourceCache([
+        /rsrc\.php/,
+    ]);
 
     const crawler = new Apify.PuppeteerCrawler({
         requestQueue,
@@ -238,36 +250,25 @@ Apify.main(async () => {
             persistStateKeyValueStoreId: sessionStorage || undefined,
             maxPoolSize: sessionStorage ? 1 : undefined,
         },
-        maxRequestRetries: 10,
+        maxRequestRetries: 5,
         maxConcurrency,
-        puppeteerPoolOptions: {
-            useIncognitoPages: true,
-            maxOpenPagesPerInstance: maxConcurrency,
-        },
-        proxyConfiguration: proxyConfig || undefined,
-        launchPuppeteerFunction: async (options) => {
-            return Apify.launchPuppeteer({
-                ...options,
+        proxyConfiguration: proxyConfig,
+        launchContext: {
+            stealth: useStealth,
+            launchOptions: {
                 devtools: debugLog,
-                // useChrome: Apify.isAtHome(),
-                stealth: useStealth,
-                stealthOptions: {
-                    addLanguage: false,
-                    addPlugins: false,
-                    emulateConsoleDebug: false,
-                    emulateWebGL: false,
-                    hideWebDriver: true,
-                    emulateWindowFrame: false,
-                    hackPermissions: false,
-                    mockChrome: false,
-                    mockDeviceMemory: false,
-                    mockChromeInIframe: false,
-                },
-            } as any);
+                useIncognitoPages: true,
+            },
+        },
+        browserPoolOptions: {
+            maxOpenPagesPerBrowser: maxConcurrency,
         },
         persistCookiesPerSession: sessionStorage !== '',
         handlePageTimeoutSecs, // more comments, less concurrency
-        gotoFunction: async ({ page, request, puppeteerPool }) => {
+        preNavigationHooks: [async ({ page, request }, gotoOptions) => {
+            gotoOptions.waitUntil = 'domcontentloaded';
+            gotoOptions.timeout = 60000;
+
             await setLanguageCodeToCookie(language, page);
 
             await executeOnDebug(async () => {
@@ -299,6 +300,8 @@ Apify.main(async () => {
                     }
                 }
             });
+
+            await cache(page);
 
             // make the page a little more lightweight
             await puppeteer.blockRequests(page, {
@@ -337,27 +340,23 @@ Apify.main(async () => {
                     width: useMobile ? 360 : 1920,
                     hasTouch: useMobile,
                     isMobile: useMobile,
-                    deviceScaleFactor: useMobile ? 4 : 1,
+                    deviceScaleFactor: useMobile ? 2 : 1,
                 },
             });
 
-            try {
-                return await page.goto(request.url, {
-                    waitUntil: 'networkidle2',
-                    timeout: 60000,
-                });
-            } catch (e) {
-                log.exception(e, 'gotoFunction', {
-                    url: request.url,
-                    userData: request.userData,
-                });
-
-                await puppeteerPool.retire(page.browser());
-
-                throw e;
-            }
-        },
-        handlePageFunction: async ({ request, page, puppeteerPool, session }) => {
+            await page.evaluateOnNewDocument(() => {
+                const f = () => {
+                    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="cookie-policy-dialog-accept-button"]')) {
+                        if (btn) {
+                            btn.click();
+                        }
+                    }
+                    setTimeout(f, 1000);
+                };
+                setTimeout(f);
+            });
+        }],
+        handlePageFunction: async ({ request, page, session }) => {
             const { userData } = request;
 
             const label: FbLabel = userData.label; // eslint-disable-line prefer-destructuring
@@ -418,7 +417,7 @@ Apify.main(async () => {
                     });
                 }
 
-                if (label !== LABELS.LISTING && await isNotFoundPage(page)) {
+                if (label !== LABELS.LISTING && label !== LABELS.POST && await isNotFoundPage(page)) {
                     request.noRetry = true;
 
                     // throw away if page is not available
@@ -501,24 +500,34 @@ Apify.main(async () => {
                             });
                             break;
                         // Posts
-                        case 'posts':
+                        case 'posts': {
                             // We don't do anything here, we enqueue posts to be
                             // read on their own phase/label
-                            await getPostUrls(page, {
+                            const postCount = await getPostUrls(page, {
                                 max: maxPosts,
-                                date: processedMaxPostDate,
-                                minDate: processedMinPostDate,
+                                date: postDate,
                                 username,
                                 requestQueue,
+                                request,
+                                minPosts,
                             });
 
+                            if (maxPosts && minPosts && postCount < minPosts) {
+                                throw new InfoError(`Minimum post count of ${minPosts} not met, retrying...`, {
+                                    namespace: 'threshold',
+                                    url: page.url(),
+                                });
+                            }
+
                             break;
+                        }
                         // Reviews if any
                         case 'reviews':
                             try {
                                 const reviewsData = await getReviews(page, {
                                     max: maxReviews,
-                                    date: processedReviewDate,
+                                    date: reviewDate,
+                                    request,
                                 });
 
                                 if (reviewsData) {
@@ -568,7 +577,9 @@ Apify.main(async () => {
                     const postComments = await getPostComments(page, {
                         max: maxPostComments,
                         mode: commentsMode,
-                        date: processedCommentDate,
+                        date: commentDate,
+                        request,
+                        minPostComments,
                     });
 
                     await map.append(username, async (value) => {
@@ -585,12 +596,14 @@ Apify.main(async () => {
                         } as Partial<FbPage>;
                     });
 
+                    if (maxPostComments && minPostComments && (postComments?.comments?.length ?? 0) < minPostComments) {
+                        throw new InfoError(`Minimum post count ${minPostComments} not met, retrying`, {
+                            namespace: 'threshold',
+                            url: page.url(),
+                        });
+                    }
+
                     log.info(`Processed post in ${postTimer() / 1000}s`, { url: request.url });
-                } else {
-                    throw new InfoError(`Invalid label found ${userData.label}`, {
-                        url: request.url,
-                        namespace: 'handlePageFunction',
-                    });
                 }
             } catch (e) {
                 log.debug(e.message, {
@@ -599,17 +612,13 @@ Apify.main(async () => {
                     error: e,
                 });
 
-                session?.markBad();
-
                 if (e instanceof InfoError) {
                     // We want to inform the rich error before throwing
                     log.warning(e.message, e.toJSON());
 
-                    if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal', 'login'].includes(e.meta.namespace)) {
+                    if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal', 'login', 'threshold'].includes(e.meta.namespace)) {
                         // the session is really bad
                         session?.retire();
-
-                        await puppeteerPool.retire(page.browser());
                     }
                 }
 

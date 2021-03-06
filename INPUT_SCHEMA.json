@@ -303,7 +303,7 @@
             "editor": "number"
         },
         "maxCommentDate": {
-            "title": "Minimum",
+            "title": "Minimum comment date",
             "description": "Limit the minimum date for comments",
             "example": "2020-01-01",
             "type": "string",
@@ -366,7 +366,8 @@
                 "useApifyProxy": true
             },
             "prefill": {
-                "useApifyProxy": true
+                "useApifyProxy": true,
+                "apifyProxyGroups": ["RESIDENTIAL"]
             },
             "editor": "proxy"
         },

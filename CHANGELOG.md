@@ -1,3 +1,12 @@
+# 4.4.0
+
+* Cache optimization
+* Better resource handling
+* Minimum posts and comments threshold
+* Proxy configuration hints
+* Alternative date interval check
+* Apify SDK 1.0.2
+
 # 4.1.0
 
 * Added minimum post date to only get older posts
