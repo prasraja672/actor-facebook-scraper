@@ -663,12 +663,8 @@ export const getPostComments = async (
                     log.debug(`res.json ${e.message}`, { url: res.url() });
                 }
 
-                counter.empty(!json);
-
                 if (json) {
                     const data = get(json, ['data', 'feedback', 'display_comments']);
-
-                    counter.empty(!(data?.count));
 
                     if (data) {
                         if (data.count > count) {
