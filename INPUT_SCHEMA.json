@@ -359,9 +359,9 @@
             "editor": "checkbox"
         },
         "proxyConfiguration": {
-            "title": "Proxy configuration",
+            "title": "Proxy configuration \\n Only work with RESIDENTIAL",
             "type": "object",
-            "description": "Select proxies to be used by your actor.",
+            "description": "If you don't have access to RESIDENTIAL proxy group, contact us at support@apify.com to get proxy trial.",
             "example": {
                 "useApifyProxy": true
             },
