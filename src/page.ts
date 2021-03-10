@@ -257,6 +257,8 @@ export const getPostUrls = async (page: Page, {
     page.on('response', interceptAjax);
 
     try {
+        let lastCount = -1;
+
         await control.run([
             finish.promise,
             scrollUntil(page, {
@@ -264,7 +266,10 @@ export const getPostUrls = async (page: Page, {
                 maybeStop: async ({ count, bodyChanged, scrollChanged }) => {
                     await getPosts();
 
-                    log.info(`Current posts ${urls.size}/${max}`, { count, bodyChanged, scrollChanged });
+                    if (lastCount < urls.size) {
+                        lastCount = urls.size;
+                        log.info(`Current posts ${urls.size}/${max}`, { count, bodyChanged, scrollChanged });
+                    }
 
                     return urls.size >= max || counter.isOver() || (count > 20 && !bodyChanged && !scrollChanged);
                 },
