@@ -352,12 +352,15 @@ export const pageSelectors = {
                     return;
                 }
 
+                const postId = article.querySelector<HTMLInputElement>('[name="ft_ent_identifier"]')?.value;
+
                 const value = (() => {
                     try {
                         const result = {
                             publishedTime: +utime * 1000,
                             url,
                             isPinned,
+                            postId,
                         };
 
                         return result;
@@ -833,6 +836,10 @@ export interface MinMax {
 const parseTimeUnit = (value: any) => {
     if (!value) {
         return null;
+    }
+
+    if (value === 'today' || value === 'yesterday') {
+        return (value === 'today' ? moment() : moment().subtract(1, 'day')).startOf('day');
     }
 
     const [, number, unit] = `${value}`.match(/^(\d+) (minute|second|day|hour|month|year|week)s?$/i) || [];

@@ -160,7 +160,7 @@ export const getPostUrls = async (page: Page, {
 
             // console.log("length", posts.length);
 
-            for (const { isPinned, publishedTime, url } of posts) {
+            for (const { isPinned, publishedTime, url, postId } of posts) {
                 log.debug('Post info', {
                     isPinned,
                     publishedTime,
@@ -190,7 +190,7 @@ export const getPostUrls = async (page: Page, {
                 if (inDateRange && parsed && !urls.has(parsed.toString())) {
                     const story_fbid = parsed.searchParams.get('story_fbid');
 
-                    if (story_fbid || parsed.pathname.includes('/videos/') || parsed.pathname.includes('/posts/')) {
+                    if (story_fbid || parsed.pathname.includes('/videos/') || parsed.pathname.includes('/posts/') || postId) {
                         urls.add(parsed.toString());
 
                         await requestQueue.addRequest({
@@ -199,9 +199,9 @@ export const getPostUrls = async (page: Page, {
                                 label: LABELS.POST,
                                 useMobile: false,
                                 username,
-                                canonical: `${DESKTOP_ADDRESS}/${username}/${story_fbid
-                                    ? `posts/${story_fbid}`
-                                    : parsed.pathname.split(/\/(photos|videos)\//).slice(1).join('/')
+                                canonical: `${DESKTOP_ADDRESS}/${username}/${postId || story_fbid
+                                    ? `posts/${postId || story_fbid}`
+                                    : parsed.pathname.split(/\/videos\//).slice(1).join('/')
                                 }`,
                             },
                         });
