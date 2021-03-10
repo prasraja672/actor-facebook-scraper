@@ -161,12 +161,6 @@ export const getPostUrls = async (page: Page, {
             // console.log("length", posts.length);
 
             for (const { isPinned, publishedTime, url, postId } of posts) {
-                log.debug('Post info', {
-                    isPinned,
-                    publishedTime,
-                    url,
-                });
-
                 if (urls.size >= max || counter.isOver()) {
                     log.info('Stopping getting posts', { size: urls.size, ...counter.stats() });
 
@@ -187,6 +181,16 @@ export const getPostUrls = async (page: Page, {
 
                 const parsed = storyFbToDesktopPermalink(url);
 
+                log.debug('Post info', {
+                    isPinned,
+                    publishedTime,
+                    url,
+                    postId,
+                    parsed,
+                    inDateRange,
+                    convertedDate,
+                });
+
                 if (inDateRange && parsed && !urls.has(parsed.toString())) {
                     const story_fbid = parsed.searchParams.get('story_fbid');
 
@@ -194,7 +198,9 @@ export const getPostUrls = async (page: Page, {
                         urls.add(parsed.toString());
 
                         await requestQueue.addRequest({
-                            url: parsed.href,
+                            url: parsed.pathname.includes('/photos/')
+                                ? `${DESKTOP_ADDRESS}/${username}/posts/${story_fbid || postId}`
+                                : parsed.href,
                             userData: {
                                 label: LABELS.POST,
                                 useMobile: false,
