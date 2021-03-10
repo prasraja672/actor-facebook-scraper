@@ -81,9 +81,13 @@ Apify.main(async () => {
         required: true,
     });
 
-    if (Apify.isAtHome() && !proxyConfig?.groups?.includes('RESIDENTIAL')) {
-        log.warning(`!!!!!!!!!!!!!!!!!!!!!!!\n\nYou're not using RESIDENTIAL proxy group, it won't work as expected. Contact support@apify.com or on Intercom to give you proxy trial\n\n!!!!!!!!!!!!!!!!!!!!!!!`);
-    }
+    const residentialWarning = () => {
+        if (Apify.isAtHome() && !proxyConfig?.groups?.includes('RESIDENTIAL')) {
+            log.warning(`!!!!!!!!!!!!!!!!!!!!!!!\n\nYou're not using RESIDENTIAL proxy group, it won't work as expected. Contact support@apify.com or on Intercom to give you proxy trial\n\n!!!!!!!!!!!!!!!!!!!!!!!`);
+        }
+    };
+
+    residentialWarning();
 
     let handlePageTimeoutSecs = Math.round(60 * (((maxPostComments + maxPosts) || 10) * 0.03)) + 600; // minimum 600s
 
@@ -653,6 +657,8 @@ Apify.main(async () => {
         "#version": 3, // current data format version
         '#finishedAt': finished,
     })));
+
+    residentialWarning();
 
     log.info(`Done in ${Math.round(elapsed() / 60000)}m!`);
 });
