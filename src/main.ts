@@ -270,7 +270,9 @@ Apify.main(async () => {
         persistCookiesPerSession: sessionStorage !== '',
         handlePageTimeoutSecs, // more comments, less concurrency
         preNavigationHooks: [async ({ page, request }, gotoOptions) => {
-            gotoOptions.waitUntil = 'domcontentloaded';
+            gotoOptions.waitUntil = request.userData.label === LABELS.POST || (request.userData.label === LABELS.PAGE && ['posts', 'reviews'].includes(request.userData.sub))
+                ? 'load'
+                : 'domcontentloaded';
             gotoOptions.timeout = 60000;
 
             await setLanguageCodeToCookie(language, page);
@@ -421,7 +423,7 @@ Apify.main(async () => {
                     });
                 }
 
-                if (label !== LABELS.LISTING && label !== LABELS.POST && await isNotFoundPage(page)) {
+                if (label !== LABELS.LISTING && label !== LABELS.POST && request.userData.sub !== 'posts' && await isNotFoundPage(page)) {
                     request.noRetry = true;
 
                     // throw away if page is not available

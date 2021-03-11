@@ -4,7 +4,7 @@ import * as moment from 'moment';
 import UserAgents = require('user-agents');
 
 import { InfoError } from './error';
-import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, LABELS } from './constants';
+import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, DESKTOP_ADDRESS, LABELS } from './constants';
 import type { FbLocalBusiness, FbSection, FbLabel, FbReview } from './definitions';
 
 const { log, sleep } = Apify.utils;
@@ -12,18 +12,21 @@ const { log, sleep } = Apify.utils;
 /**
  * Takes a story.php and turns into a cleaned desktop permalink.php
  */
-export const storyFbToDesktopPermalink = (url?: string | null) => {
+export const storyFbToDesktopPermalink = (url?: string | null, postId?: string) => {
     if (!url) {
         return null;
     }
 
-    const parsed = new URL(url);
-    parsed.hostname = DESKTOP_HOST;
+    const parsed = new URL(url, DESKTOP_ADDRESS);
 
-    if (url.includes('story_fbid=')
-        && url.includes('id=')
-        && !url.includes('/photos')) {
-        parsed.pathname = '/permalink.php';
+    if (!postId) {
+        if (parsed.searchParams.has('story_fbid')
+            && parsed.searchParams.has('id')
+            && !parsed.pathname.includes('/photos')) {
+            parsed.pathname = '/permalink.php';
+        }
+    } else {
+        parsed.pathname = `${parsed.pathname.split('/', 2)[1]}/posts/${postId}`;
     }
 
     parsed.searchParams.forEach((_, key) => {
@@ -198,7 +201,7 @@ export const createPageSelector = <E extends Element, C extends (els: ElementHan
     type MapReturn = C extends (...args: any) => Promise<infer R> ? R : any;
 
     return async (page: Page, wait = 0): Promise<MapReturn> => {
-        if (!await page.$(selector)) {
+        if (!(await page.$$(selector)).length) {
             if (wait > 0) {
                 try {
                     await page.waitForSelector(selector, {
@@ -369,7 +372,7 @@ export const pageSelectors = {
 
                 try {
                     article.parentElement!.parentElement!.remove();
-                    await new Promise((r) => setTimeout(r, 500));
+                    await new Promise((r) => setTimeout(r, 200));
                 } catch (e) {} // eslint-disable-line
 
                 return value;
@@ -987,47 +990,86 @@ export const resourceCache = (paths: RegExp[]) => {
 
 export const dateRangeItemCounter = (minMax: MinMaxDates) => {
     let total = 0;
-    let older = 0;
-    let newer = 0;
+    const max = {
+        older: 0,
+        newer: 0,
+    };
+    const min = {
+        older: 0,
+        newer: 0,
+    };
     let outOfRange = 0;
     let empty = 0;
+    let inRange = 0;
+    let calls = 0;
+    const willCheckRange = !!minMax.maxDate && !!minMax.minDate;
 
     return {
         stats() {
             return {
                 total,
                 outOfRange,
-                older,
-                newer,
+                max,
+                min,
                 empty,
+                calls,
+                inRange,
             };
         },
         empty(predicate: boolean) {
-            if (!predicate) {
+            calls++;
+
+            if (predicate) {
                 empty++;
             }
+
+            log.debug('empty', { calls, predicate, empty });
         },
         add(value: number) {
+            calls++;
+
             total += value;
+
+            log.debug('add', { calls, value, total });
         },
         time(value: string | number) {
-            if (!minMax.compare(value)) {
+            const compare = minMax.compare(value);
+
+            if (!compare) {
+                log.debug('out of range', { value });
                 outOfRange++;
+                if (minMax.maxDate) {
+                    if ((minMax.maxDate.diff(value) ?? 0) > 0) {
+                        log.debug('max older', { value });
+                        max.older++;
+                    } else if ((minMax.maxDate.diff(value) ?? 0) < 0) {
+                        log.debug('max newer', { value });
+                        max.newer++;
+                    }
+                }
+
+                if (minMax.minDate) {
+                    if ((minMax.minDate.diff(value) ?? 0) < 0) {
+                        log.debug('min newer', { value });
+                        min.newer++;
+                    } else if ((minMax.minDate.diff(value) ?? 0) > 0) {
+                        log.debug('min older', { value });
+                        min.older++;
+                    }
+                }
+            } else {
+                log.debug('in range', { value });
+                inRange++;
             }
 
-            if ((minMax.maxDate?.diff(value) ?? 0) > 0) {
-                older++;
-            }
-
-            if ((minMax.minDate?.diff(value) ?? 0) > 0) {
-                newer++;
-            }
-
-            return minMax.compare(value);
+            return compare;
         },
         isOver() {
-            return (outOfRange > 0 && (older && total ? older / total > 0.7 : false))
-                || (empty && total ? empty / total > 0.2 : false);
+            // eslint-disable-next-line no-nested-ternary
+            return calls > 0 && total > 0
+                ? (willCheckRange && inRange > 0 ? (outOfRange / total) + (inRange / total) > 0.95 : false)
+                    || (empty ? empty / total > 0.8 : false)
+                : false;
         },
     };
 };

@@ -140,78 +140,76 @@ export const getPostUrls = async (page: Page, {
         return 0;
     }
 
-    await page.waitForSelector(CSS_SELECTORS.POST_TIME);
-
     const urls = new Set<string>(request.userData.urls);
     const finish = deferred(); // gracefully finish
     const currentUrl = page.url();
 
     const start = stopwatch();
     const control = DelayAbort(60000);
-    const scrollingSleep = 1000;
+    const scrollingSleep = 2000;
 
     const counter = dateRangeItemCounter(date);
 
     const getPosts = async () => {
         try {
-            const posts = await pageSelectors.posts(page, 5000);
+            const posts = await pageSelectors.posts(page, 20000);
             counter.empty(!posts.length);
             counter.add(posts.length);
 
-            // console.log("length", posts.length);
-
             for (const { isPinned, publishedTime, url, postId } of posts) {
-                if (urls.size >= max || counter.isOver()) {
-                    log.info('Stopping getting posts', { size: urls.size, ...counter.stats() });
+                control.postpone();
 
-                    finish.resolve();
+                if (urls.size >= max || counter.isOver()) {
+                    const { calls, empty, total } = counter.stats();
+
+                    if (calls && empty > total) {
+                        finish.reject(new InfoError('Failed to load posts', {
+                            namespace: 'getPostUrls',
+                            url: currentUrl,
+                        }));
+                    } else {
+                        log.info('Stopping getting posts', { size: urls.size, ...counter.stats() });
+
+                        finish.resolve();
+                    }
                     return;
                 }
-
-                control.postpone();
 
                 const convertedDate = convertDate(publishedTime);
                 const inDateRange = !isPinned
                     ? counter.time(convertedDate)
                     : date.compare(convertedDate); // skip increasing metrics for pinned posts
 
-                if (!inDateRange) {
-                    log.debug('Is out of range', { publishedTime, url, isPinned });
-                }
-
-                const parsed = storyFbToDesktopPermalink(url);
+                const parsed = storyFbToDesktopPermalink(url, postId);
 
                 log.debug('Post info', {
                     isPinned,
                     publishedTime,
                     url,
                     postId,
-                    parsed,
+                    parsed: parsed?.toString(),
                     inDateRange,
                     convertedDate,
+                    ...counter.stats(),
                 });
 
                 if (inDateRange && parsed && !urls.has(parsed.toString())) {
                     const story_fbid = parsed.searchParams.get('story_fbid');
 
-                    if (story_fbid || parsed.pathname.includes('/videos/') || parsed.pathname.includes('/posts/') || postId) {
-                        urls.add(parsed.toString());
+                    urls.add(parsed.toString());
 
-                        await requestQueue.addRequest({
-                            url: parsed.pathname.includes('/photos/')
-                                ? `${DESKTOP_ADDRESS}/${username}/posts/${story_fbid || postId}`
-                                : parsed.href,
-                            userData: {
-                                label: LABELS.POST,
-                                useMobile: false,
-                                username,
-                                canonical: `${DESKTOP_ADDRESS}/${username}/${postId || story_fbid
-                                    ? `posts/${postId || story_fbid}`
-                                    : parsed.pathname.split(/\/videos\//).slice(1).join('/')
-                                }`,
-                            },
-                        });
-                    }
+                    await requestQueue.addRequest({
+                        url: parsed.toString(),
+                        userData: {
+                            label: LABELS.POST,
+                            useMobile: false,
+                            username,
+                            canonical: `${DESKTOP_ADDRESS}/${username}/${postId || story_fbid
+                                ? `posts/${postId || story_fbid}`
+                                : parsed.pathname.split(/\/(photos|videos)\//).slice(1).join('/')
+                            }`,
+                        },
+                    });
                 }
             }
         } catch (e) {
@@ -237,10 +235,6 @@ export const getPostUrls = async (page: Page, {
     };
 
     const interceptAjax = async (res: Response) => {
-        if (res.url().includes('page_content_list_view/more')) {
-            control.postpone(); // we are getting new posts
-        }
-
         const status = res.status();
 
         if (status !== 200 && status !== 302) {
@@ -257,18 +251,20 @@ export const getPostUrls = async (page: Page, {
     page.on('response', interceptAjax);
 
     try {
-        let lastCount = -1;
+        await getPosts();
+
+        let lastCount = 0;
 
         await control.run([
             finish.promise,
             scrollUntil(page, {
-                sleepMillis: scrollingSleep,
+                sleepMillis: scrollingSleep * 2,
                 maybeStop: async ({ count, bodyChanged, scrollChanged }) => {
                     await getPosts();
 
                     if (lastCount < urls.size) {
                         lastCount = urls.size;
-                        log.info(`Current posts ${urls.size}/${max}`, { count, bodyChanged, scrollChanged });
+                        log.info(`Current posts ${urls.size}/${max}`, { url: currentUrl, count, bodyChanged, scrollChanged });
                     }
 
                     return urls.size >= max || counter.isOver() || (count > 20 && !bodyChanged && !scrollChanged);
@@ -277,6 +273,15 @@ export const getPostUrls = async (page: Page, {
         ]);
     } catch (e) {
         if (e instanceof AbortError) {
+            const { empty, total, calls } = counter.stats();
+
+            if (calls && empty > total) {
+                throw new InfoError('Failed to load posts', {
+                    namespace: 'getPostUrls',
+                    url: currentUrl,
+                });
+            }
+
             log.warning(`Loading of posts aborted`, { url: currentUrl, username });
         } else {
             throw e;
@@ -337,10 +342,6 @@ export const getReviews = async (
     };
 
     const interceptAjax = async (res: Response) => {
-        if (res.url().includes('page_content_list_view/more')) {
-            control.postpone(); // we are getting new posts
-        }
-
         const status = res.status();
 
         if (status !== 200 && status !== 302) {

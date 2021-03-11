@@ -268,7 +268,7 @@
         },
         "minPosts": {
             "title": "Minimum post count",
-            "description": "What is the expected minimum number of posts before considering it a successiful run",
+            "description": "What is the expected minimum number of posts before considering it a successful run",
             "type": "integer",
             "default": 0,
             "editor": "number"
@@ -297,7 +297,7 @@
         },
         "minPostComments": {
             "title": "Minimum post comments",
-            "description": "What is the expected minimum number of comments in each post before considering it a successiful run",
+            "description": "What is the expected minimum number of comments in each post before considering it a successful run",
             "type": "integer",
             "default": 0,
             "editor": "number"
