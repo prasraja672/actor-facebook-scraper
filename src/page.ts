@@ -146,13 +146,13 @@ export const getPostUrls = async (page: Page, {
 
     const start = stopwatch();
     const control = DelayAbort(60000);
-    const scrollingSleep = 2000;
+    const scrollingSleep = 200;
 
     const counter = dateRangeItemCounter(date);
 
     const getPosts = async () => {
         try {
-            const posts = await pageSelectors.posts(page, 20000);
+            const posts = await pageSelectors.posts(page, scrollingSleep * 10);
             counter.empty(!posts.length);
             counter.add(posts.length);
 
@@ -258,7 +258,7 @@ export const getPostUrls = async (page: Page, {
         await control.run([
             finish.promise,
             scrollUntil(page, {
-                sleepMillis: scrollingSleep * 2,
+                sleepMillis: scrollingSleep,
                 maybeStop: async ({ count, bodyChanged, scrollChanged }) => {
                     await getPosts();
 

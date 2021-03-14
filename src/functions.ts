@@ -201,6 +201,10 @@ export const createPageSelector = <E extends Element, C extends (els: ElementHan
     type MapReturn = C extends (...args: any) => Promise<infer R> ? R : any;
 
     return async (page: Page, wait = 0): Promise<MapReturn> => {
+        if (page.isClosed()) {
+            return map([], page);
+        }
+
         if (!(await page.$$(selector)).length) {
             if (wait > 0) {
                 try {
@@ -664,6 +668,10 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
             scrollChanged: boolean;
             bodyChanged: boolean;
         }) => {
+        if (page.isClosed()) {
+            return false;
+        }
+
         if (selectors.length) {
             const foundSelectors = await page.evaluate(async (sels: string[]) => {
                 return sels.some((z) => {
@@ -705,6 +713,10 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
         if (doScroll()) {
             await sleep(sleepMillis);
 
+            if (page.isClosed()) {
+                break;
+            }
+
             await page.evaluate(async () => {
                 window.scrollBy({
                     top: Math.round(window.innerHeight / 1.75) || 100,
@@ -713,11 +725,19 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
 
             await sleep(sleepMillis);
 
+            if (page.isClosed()) {
+                break;
+            }
+
             const lastScroll = await page.evaluate(async () => window.scrollY);
             const scrollChanged = isChanging(scrolls, lastScroll);
 
             if (lastScroll) {
                 scrolls.add(lastScroll);
+            }
+
+            if (page.isClosed()) {
+                break;
             }
 
             const bodyHeight = await page.evaluate(async () => document.body.scrollHeight);
@@ -760,6 +780,10 @@ export const clickSeeMore = async (page: Page) => {
 
     for (const seeMore of await page.$$(CSS_SELECTORS.SEE_MORE)) {
         try {
+            if (page.isClosed()) {
+                break;
+            }
+
             log.info('Clicking see more', { url: page.url() });
 
             const promise = page.waitForResponse((r) => {
