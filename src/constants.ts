@@ -8,6 +8,7 @@ export const DESKTOP_ADDRESS = `https://${DESKTOP_HOST}`;
 export const LABELS: Record<FbLabel, FbLabel> = {
     LISTING: 'LISTING',
     PAGE: 'PAGE',
+    PHOTO: 'PHOTO',
     POST: 'POST',
 };
 

@@ -14,6 +14,7 @@ import {
     proxyConfiguration,
     minMaxDates,
     resourceCache,
+    photoToPost,
 } from './functions';
 import {
     getPagesFromListing,
@@ -89,7 +90,7 @@ Apify.main(async () => {
 
     residentialWarning();
 
-    let handlePageTimeoutSecs = Math.round(60 * (((maxPostComments + maxPosts) || 10) * 0.03)) + 600; // minimum 600s
+    let handlePageTimeoutSecs = Math.round(60 * (((maxPostComments + maxPosts) || 10) * 0.08)) + 600; // minimum 600s
 
     if (handlePageTimeoutSecs * 60000 >= 0x7FFFFFFF) {
         log.warning(`maxPosts + maxPostComments parameter is too high, must be less than ${0x7FFFFFFF} milliseconds in total, got ${handlePageTimeoutSecs * 60000}. Loading posts and comments might never finish or crash the scraper at any moment.`, {
@@ -201,7 +202,7 @@ Apify.main(async () => {
 
     for (const request of processedRequests) {
         try {
-            const { url } = request;
+            let { url } = request;
             const urlType = getUrlLabel(url);
 
             if (urlType === LABELS.PAGE) {
@@ -216,7 +217,11 @@ Apify.main(async () => {
                         useMobile: false,
                     },
                 });
-            } else if (urlType === LABELS.POST) {
+            } else if (urlType === LABELS.POST || urlType === LABELS.PHOTO) {
+                if (LABELS.PHOTO) {
+                    url = photoToPost(url) ?? url;
+                }
+
                 const username = extractUsernameFromUrl(url);
 
                 await requestQueue.addRequest({

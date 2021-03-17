@@ -536,6 +536,19 @@ export const setLanguageCodeToCookie = async (language: string, page: Page) => {
 };
 
 /**
+ * Workaround the /photos/ url
+ */
+export const photoToPost = (url: string) => {
+    const matches = `${url}`.match(/\/photos\/a\.(\d+)/);
+
+    if (matches?.[1]) {
+        return storyFbToDesktopPermalink(url, matches[1])?.toString();
+    }
+
+    return url;
+};
+
+/**
  * Detect the type of url start
  *
  * @throws {InfoError}
@@ -554,6 +567,10 @@ export const getUrlLabel = (url: string): FbLabel => {
     if (parsedUrl.hostname.includes('facebook.com')) {
         if (parsedUrl.pathname.startsWith('/biz/')) {
             return LABELS.LISTING;
+        }
+
+        if (/\/photos\/a\.\d+/.test(parsedUrl.pathname)) {
+            return LABELS.PHOTO;
         }
 
         if (/\/posts\/\d+/.test(parsedUrl.pathname)) {
@@ -869,7 +886,7 @@ const parseTimeUnit = (value: any) => {
         return (value === 'today' ? moment() : moment().subtract(1, 'day')).startOf('day');
     }
 
-    const [, number, unit] = `${value}`.match(/^(\d+) (minute|second|day|hour|month|year|week)s?$/i) || [];
+    const [, number, unit] = `${value}`.match(/^(\d+)\s?(minute|second|day|hour|month|year|week)s?$/i) || [];
 
     if (+number && unit) {
         return moment().subtract(+number, unit as any);
