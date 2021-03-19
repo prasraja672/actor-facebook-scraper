@@ -427,5 +427,5 @@
             "type": "boolean"
         }
     },
-    "required": ["startUrls", "proxyConfiguration"]
+    "required": ["proxyConfiguration"]
 }
