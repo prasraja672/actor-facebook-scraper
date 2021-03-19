@@ -1,7 +1,28 @@
 import Apify from 'apify';
 import { InfoError } from './error';
 import { LABELS, CSS_SELECTORS } from './constants';
+import * as fns from './functions';
 import {
+    getPagesFromListing,
+    getPageInfo,
+    getPostUrls,
+    getFieldInfos,
+    getReviews,
+    getPostContent,
+    getPostComments,
+    getServices,
+    getPostInfoFromScript,
+    isNotFoundPage,
+    getPagesFromSearch,
+} from './page';
+import { statePersistor, emptyState } from './storage';
+import type { Schema, FbLabel, FbSection, FbPage } from './definitions';
+
+import LANGUAGES = require('./languages.json');
+
+const { log, puppeteer } = Apify.utils;
+
+const {
     getUrlLabel,
     setLanguageCodeToCookie,
     userAgents,
@@ -15,25 +36,9 @@ import {
     minMaxDates,
     resourceCache,
     photoToPost,
-} from './functions';
-import {
-    getPagesFromListing,
-    getPageInfo,
-    getPostUrls,
-    getFieldInfos,
-    getReviews,
-    getPostContent,
-    getPostComments,
-    getServices,
-    getPostInfoFromScript,
-    isNotFoundPage,
-} from './page';
-import { statePersistor, emptyState } from './storage';
-import type { Schema, FbLabel, FbSection, FbPage } from './definitions';
-
-import LANGUAGES = require('./languages.json');
-
-const { log, puppeteer } = Apify.utils;
+    extendFunction,
+    createAddPageSearch,
+} = fns;
 
 Apify.main(async () => {
     const input: Schema | null = await Apify.getInput() as any;
@@ -43,7 +48,7 @@ Apify.main(async () => {
     }
 
     const {
-        startUrls,
+        startUrls = [],
         maxPosts = 3,
         maxPostDate,
         minPostDate,
@@ -62,13 +67,15 @@ Apify.main(async () => {
         debugLog = false,
         minPostComments,
         minPosts,
+        searchPages = [],
+        searchLimit = 10,
     } = input;
 
     if (debugLog) {
         log.setLevel(log.LEVELS.DEBUG);
     }
 
-    if (!Array.isArray(startUrls) || !startUrls.length) {
+    if ((!Array.isArray(startUrls) || !startUrls.length) && !searchPages?.length) {
         throw new Error('You must provide the "startUrls" input');
     }
 
@@ -161,7 +168,7 @@ Apify.main(async () => {
         processedRequests.add(nextRequest);
     }
 
-    if (!processedRequests.size) {
+    if (startUrls?.length && !processedRequests.size) {
         throw new Error('No requests were loaded from startUrls');
     }
 
@@ -200,6 +207,12 @@ Apify.main(async () => {
         ...(scrapeServices ? ['services'] : []),
     ] as FbSection[];
 
+    const addPageSearch = createAddPageSearch(requestQueue);
+
+    for (const search of searchPages) {
+        await addPageSearch(search);
+    }
+
     for (const request of processedRequests) {
         try {
             let { url } = request;
@@ -209,6 +222,8 @@ Apify.main(async () => {
                 for (const subpage of generateSubpagesFromUrl(url, pageInfo)) {
                     await initSubPage(subpage, url);
                 }
+            } else if (urlType === LABELS.SEARCH) {
+                await addPageSearch(url);
             } else if (urlType === LABELS.LISTING) {
                 await requestQueue.addRequest({
                     url,
@@ -251,6 +266,25 @@ Apify.main(async () => {
     const cache = resourceCache([
         /rsrc\.php/,
     ]);
+
+    const extendScraperFunction = await extendFunction({
+        output: async () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
+        key: 'extendScraperFunction',
+        input,
+        helpers: {
+            state,
+            handlePageTimeoutSecs,
+            cache,
+            requestQueue,
+            LABELS,
+            addPageSearch,
+            map,
+            fns,
+            postDate,
+            commentDate,
+            reviewDate,
+        },
+    });
 
     const crawler = new Apify.PuppeteerCrawler({
         requestQueue,
@@ -357,7 +391,7 @@ Apify.main(async () => {
 
             await page.evaluateOnNewDocument(() => {
                 const f = () => {
-                    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="cookie-policy-dialog-accept-button"]')) {
+                    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="accept-cookie-banner-label"],#accept-cookie-banner-label')) {
                         if (btn) {
                             btn.click();
                         }
@@ -428,7 +462,11 @@ Apify.main(async () => {
                     });
                 }
 
-                if (label !== LABELS.LISTING && label !== LABELS.POST && request.userData.sub !== 'posts' && await isNotFoundPage(page)) {
+                if (label !== LABELS.LISTING
+                    && label !== LABELS.SEARCH
+                    && label !== LABELS.POST
+                    && request.userData.sub !== 'posts'
+                    && await isNotFoundPage(page)) {
                     request.noRetry = true;
 
                     // throw away if page is not available
@@ -451,6 +489,19 @@ Apify.main(async () => {
                     }
 
                     log.info(`Got ${pagesUrls.size} pages from listing in ${start() / 1000}s`);
+                } else if (userData.label === LABELS.SEARCH) {
+                    const start = stopwatch();
+                    let count = 0;
+
+                    for await (const url of getPagesFromSearch(page, searchLimit)) {
+                        count++;
+
+                        for (const subpage of generateSubpagesFromUrl(url, pageInfo)) {
+                            await initSubPage(subpage, request.url);
+                        }
+                    }
+
+                    log.info(`Got ${count} pages from search "${userData.searchTerm}" in ${start() / 1000}s`);
                 } else if (userData.label === LABELS.PAGE) {
                     const username = extractUsernameFromUrl(request.url);
 
@@ -566,10 +617,6 @@ Apify.main(async () => {
                             break;
                         // make eslint happy
                         default:
-                            throw new InfoError(`Unknown subsection ${userData.sub}`, {
-                                url: request.url,
-                                namespace: 'handlePageFunction',
-                            });
                     }
                 } else if (label === LABELS.POST) {
                     const postTimer = stopwatch();
@@ -634,6 +681,14 @@ Apify.main(async () => {
                 }
 
                 throw e;
+            } finally {
+                await extendScraperFunction(undefined, {
+                    page,
+                    request,
+                    session,
+                    username: extractUsernameFromUrl(request.url),
+                    label: 'HANDLE',
+                });
             }
 
             log.debug(`Done with page ${request.url}`);
@@ -650,7 +705,17 @@ Apify.main(async () => {
         },
     });
 
+    await extendScraperFunction(undefined, {
+        label: 'SETUP',
+        crawler,
+    });
+
     await crawler.run();
+
+    await extendScraperFunction(undefined, {
+        label: 'FINISH',
+        crawler,
+    });
 
     await persistState();
 

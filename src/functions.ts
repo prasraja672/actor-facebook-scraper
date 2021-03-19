@@ -1,6 +1,7 @@
 import Apify from 'apify';
 import type { ElementHandle, Page } from 'puppeteer';
 import * as moment from 'moment';
+import * as vm from 'vm';
 import UserAgents = require('user-agents');
 
 import { InfoError } from './error';
@@ -8,6 +9,50 @@ import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, DESKTOP_ADDRESS, LABELS } fro
 import type { FbLocalBusiness, FbSection, FbLabel, FbReview } from './definitions';
 
 const { log, sleep } = Apify.utils;
+
+export const createAddPageSearch = (requestQueue: Apify.RequestQueue) => async (termOrUrl?: string) => {
+    if (!termOrUrl) {
+        return;
+    }
+
+    const { url, searchTerm } = (() => {
+        const nUrl = new URL(`/public`, DESKTOP_ADDRESS);
+        nUrl.searchParams.set('type', 'pages');
+        nUrl.searchParams.set('init', 'dir');
+        nUrl.searchParams.set('nomc', '0');
+        let query: string | null;
+
+        if (!termOrUrl.includes('facebook.com')) {
+            query = termOrUrl;
+        } else {
+            const parsed = new URL(termOrUrl, DESKTOP_ADDRESS);
+            query = parsed.searchParams.get('query');
+        }
+
+        if (query) {
+            nUrl.searchParams.set('query', query);
+        }
+
+        return {
+            url: nUrl.toString(),
+            searchTerm: query,
+        };
+    })();
+
+    if (!searchTerm || !url) {
+        return;
+    }
+
+    log.debug('Adding search', { url, searchTerm });
+
+    await requestQueue.addRequest({
+        url,
+        userData: {
+            label: LABELS.SEARCH,
+            searchTerm,
+        },
+    });
+};
 
 /**
  * Takes a story.php and turns into a cleaned desktop permalink.php
@@ -198,7 +243,7 @@ export const evaluateFilterMap = async <E extends Element, C extends (el: E) => 
  * if the selector is missing
  */
 export const createPageSelector = <E extends Element, C extends (els: ElementHandle<E>[], page: Page) => Promise<any>>(selector: string, namespace: string, map: C) => {
-    type MapReturn = C extends (...args: any) => Promise<infer R> ? R : any;
+    type MapReturn = NonNullable<C extends (...args: any) => Promise<infer R> ? R : any>;
 
     return async (page: Page, wait = 0): Promise<MapReturn> => {
         if (page.isClosed()) {
@@ -314,10 +359,19 @@ export const imageSelectors = {
  * General page selectors
  */
 export const pageSelectors = {
+    searchResults: createPageSelector('#pagelet_loader_initial_browse_result div > a > span', 'searchResults', async (els) => {
+        if (!els?.length) {
+            return;
+        }
+
+        return evaluateFilterMap(els, async (el) => {
+            return el.closest<HTMLAnchorElement>('a[href]')?.href;
+        });
+    }),
     // eslint-disable-next-line max-len
     verified: createPageSelector('#msite-pages-header-contents > div:not([class]):not([id]) > div:not([class]):not([id])', 'mobilePageHeader', async (els) => {
         if (!els.length) {
-            return false;
+            return;
         }
 
         return !!(await els[0].$(CSS_SELECTORS.VERIFIED));
@@ -1000,30 +1054,34 @@ export const resourceCache = (paths: RegExp[]) => {
         });
 
         page.on('response', async (res) => {
-            if (['script', 'stylesheet'].includes(res.request().resourceType())) {
-                const url = res.url();
-                const content = cache.get(url);
+            try {
+                if (['script', 'stylesheet'].includes(res.request().resourceType())) {
+                    const url = res.url();
+                    const content = cache.get(url);
 
-                if (content && !content.loaded) {
-                    const buffer = await res.buffer();
+                    if (content && !content.loaded) {
+                        const buffer = await res.buffer();
 
-                    /* eslint-disable */
-                    const {
-                        date,
-                        expires,
-                        'last-modified': lastModified,
-                        'content-length': contentLength,
-                        ...headers
-                    } = res.headers();
-                    /* eslint-enable */
+                        /* eslint-disable */
+                        const {
+                            date,
+                            expires,
+                            'last-modified': lastModified,
+                            'content-length': contentLength,
+                            ...headers
+                        } = res.headers();
+                        /* eslint-enable */
 
-                    cache.set(url, {
-                        contentType: res.headers()['content-type'],
-                        loaded: buffer.length > 0,
-                        content: buffer,
-                        headers,
-                    });
+                        cache.set(url, {
+                            contentType: res.headers()['content-type'],
+                            loaded: buffer.length > 0,
+                            content: buffer,
+                            headers,
+                        });
+                    }
                 }
+            } catch (e) {
+                log.debug('Cache error', { e: e.message });
             }
         });
     };
@@ -1112,5 +1170,102 @@ export const dateRangeItemCounter = (minMax: MinMaxDates) => {
                     || (empty ? empty / total > 0.8 : false)
                 : false;
         },
+    };
+};
+
+type PARAMS<T, CUSTOMDATA = any> = T & {
+    Apify: typeof Apify;
+    customData: CUSTOMDATA;
+    request: Apify.Request;
+};
+
+/**
+ * Compile a IO function for mapping, filtering and outputing items.
+ * Can be used as a no-op for interaction-only (void) functions on `output`.
+ * Data can be mapped and filtered twice.
+ *
+ * Provided base map and filter functions is for preparing the object for the
+ * actual extend function, it will receive both objects, `data` as the "raw" one
+ * and "item" as the processed one.
+ *
+ * Always return a passthrough function if no outputFunction provided on the
+ * selected key.
+ */
+export const extendFunction = async <RAW, INPUT extends Record<string, any>, MAPPED, HELPERS extends Record<string, any>>({
+    key,
+    output,
+    filter,
+    map,
+    input,
+    helpers,
+}: {
+    key: string,
+    map?: (data: RAW, params: PARAMS<HELPERS>) => Promise<MAPPED>,
+    output?: (data: MAPPED, params: PARAMS<HELPERS>) => Promise<void>,
+    filter?: (obj: { data: RAW, item: MAPPED }, params: PARAMS<HELPERS>) => Promise<boolean>,
+    input: INPUT,
+    helpers: HELPERS,
+}) => {
+    const base = {
+        ...helpers,
+        Apify,
+        customData: input.customData || {},
+    } as PARAMS<HELPERS>;
+
+    const evaledFn = (() => {
+        // need to keep the same signature for no-op
+        if (typeof input[key] !== 'string' || input[key].trim() === '') {
+            return new vm.Script('({ item }) => item');
+        }
+
+        try {
+            return new vm.Script(input[key], {
+                lineOffset: 0,
+                produceCachedData: false,
+                displayErrors: true,
+                filename: `${key}.js`,
+            });
+        } catch (e) {
+            throw new Error(`"${key}" parameter must be a function`);
+        }
+    })();
+
+    /**
+     * Returning arrays from wrapper function split them accordingly.
+     * Normalize to an array output, even for 1 item.
+     */
+    const splitMap = async (value: any, args: any) => {
+        const mapped = map ? await map(value, args) : value;
+
+        if (!Array.isArray(mapped)) {
+            return [mapped];
+        }
+
+        return mapped;
+    };
+
+    return async <T extends Record<string, any>>(data: RAW, args: T) => {
+        const merged = { ...base, ...args };
+
+        for (const item of await splitMap(data, merged)) {
+            if (filter && !(await filter({ data, item }, merged))) {
+                continue; // eslint-disable-line no-continue
+            }
+
+            const result = await (evaledFn.runInThisContext()({
+                ...merged,
+                data,
+                item,
+            }));
+
+            for (const out of (Array.isArray(result) ? result : [result])) {
+                if (output) {
+                    if (out !== null) {
+                        await output(out, merged);
+                    }
+                    // skip output
+                }
+            }
+        }
     };
 };

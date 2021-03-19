@@ -249,6 +249,24 @@
                 "日本語(関西)"
             ]
         },
+        "searchPages": {
+            "title": "Search pages",
+            "description": "Search pages from the public directory",
+            "type": "array",
+            "example": [
+                "restaurant New York"
+            ],
+            "default": [],
+            "editor": "stringList"
+        },
+        "searchLimit": {
+            "title": "Max search results",
+            "description": "Limit the max number of results to return",
+            "type": "integer",
+            "default": 10,
+            "prefill": 10,
+            "editor": "number"
+        },
         "commentsMode": {
             "title": "Comments mode",
             "description": "Choose the way the comments are sorted",
@@ -370,6 +388,22 @@
                 "apifyProxyGroups": ["RESIDENTIAL"]
             },
             "editor": "proxy"
+        },
+        "extendScraperFunction": {
+            "title": "Extend Scraper Function",
+            "description": "Advanced function that allows you to extend the default scraper functionality, allowing you to manually perform actions on the page",
+            "type": "string",
+            "default": "",
+            "prefill": "async ({ page, LABELS, label, request, username, map, fns, customData, Apify }) => {\n    if (label === 'HANDLE') {\n        // this is inside the handlePageFunction\n    } else if (label === 'SETUP') {\n        // before starting the crawler\n    } else if (label === 'FINISH') {\n        // after finishing the crawler\n    }\n}",
+            "editor": "javascript"
+        },
+        "customData": {
+            "title": "Custom data",
+            "description": "Any data that you want to have available inside the Extend Output/Scraper Function",
+            "default": {},
+            "prefill": {},
+            "type": "object",
+            "editor": "json"
         },
         "sessionStorage": {
             "title": "Session storage",

@@ -39,9 +39,9 @@ There are two main components to take into account if you want to run Facebook S
 
 - [Compute units](https://apify.com/pricing/actors) - Used for running the scraper
 - [Minimum Actor memory](https://apify.com/pricing) - The actor uses Puppeteer and the minimum memory you need to run it is 2048 MB. More "input page URLs" means more memory will be needed to scrape all pages.
-- [Proxies](https://apify.com/proxies) - To run this actor you will need to have access to Residential proxies. If you don't contact us at [support@apify.com](support@apify.com).
+- [Proxy](https://apify.com/proxy) - To run this actor you will need to have access to Residential proxies. If you don't contact us at [mailto:support@apify.com](support@apify.com).
 
-The usage costs differ depending on depends on each specific case: list of URLs, total amount, set up memory, country, etc. When you scrape comments and reviews, the number of scraped posts decreases, as each post has a different URL and is scraped separately. 
+The usage costs differ depending on depends on each specific case: list of URLs, total amount, set up memory, country, etc. When you scrape comments and reviews, the number of scraped posts decreases, as each post has a different URL and is scraped separately.
 
 You can find full details on our residential proxy pricing here: [https://apify.com/proxy?pricing=residential-ip#pricing](https://apify.com/proxy?pricing=residential-ip#pricing).
 
@@ -171,6 +171,38 @@ https://api.apify.com/v2/datasets/zbg3vVF3NnXGZfdsX/items?format=json&clean=1&un
 ```
 ​
 `unwind` will turn the `posts` property on the dataset to become dataset items themselves. the `fields` parameters makes sure to only include the fields that are important.
+
+## Extend Scraper Function
+
+You can use the extend scraper function to add more functionality to the scraper. All pages are kept in the `map` variable:
+
+```ts
+async ({ page, LABELS, label, request, username, map, fns, customData, Apify }) => {
+    if (label === 'HANDLE') {
+        // this is inside the handlePageFunction
+        const { userData } = request;
+
+        if (
+            userData.label === LABELS.PAGE
+            && userData.sub === 'home'
+        ) {
+            // add page banner information from mobile home page, like https://m.facebook.com/apifytech
+            await map.append(username, async (pageInfo) => {
+                return {
+                    ...pageInfo,
+                    bannerUrl: await page.evaluate(() => {
+                        return document.querySelector('.coverPhoto')?.style.backgroundImage.replace(/(url\(\"|\"\))/g, '') ?? null;
+                    })
+                };
+            });
+        }
+    } else if (label === 'SETUP') {
+        // before starting the crawler
+    } else if (label === 'FINISH') {
+        // after finishing the crawler
+    }
+}
+```
 ​
 ## Limitations
 ​

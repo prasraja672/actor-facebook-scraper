@@ -1,5 +1,5 @@
 export type FbSection = 'home' | 'posts' | 'about' | 'reviews' | 'services';
-export type FbLabel = 'LISTING' | 'PAGE' | 'POST' | 'PHOTO';
+export type FbLabel = 'LISTING' | 'PAGE' | 'POST' | 'PHOTO' | 'SEARCH';
 export type FbCommentsMode = 'RANKED_THREADED' | 'RECENT_ACTIVITY' | 'RANKED_UNFILTERED';
 export type FbMap = Map<string, Partial<FbPage>>;
 
@@ -60,6 +60,8 @@ export interface Schema {
     debugLog?: boolean;
     minPostComments?: number;
     minPosts?: number;
+    searchLimit?: number;
+    searchPages?: string[];
 }
 
 export interface FbPageInfo {

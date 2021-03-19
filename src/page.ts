@@ -124,6 +124,59 @@ export const getPagesFromListing = async (page: Page) => {
 };
 
 /**
+ * Extract links from search results
+ */
+export const getPagesFromSearch = async function* (page: Page, searchLimit: number) {
+    let errorCount = 0;
+    const existing = new Set();
+
+    do {
+        try {
+            const urls = await pageSelectors.searchResults(page, 15000);
+
+            if (!urls?.length) {
+                break;
+            }
+
+            for (const url of urls) {
+                if (!existing.has(url)) {
+                    existing.add(url);
+
+                    if (searchLimit > 0) {
+                        yield url;
+                    }
+
+                    searchLimit--;
+                }
+            }
+
+            await page.evaluate(async () => {
+                try {
+                    [...document.querySelectorAll('div[data-bt]')].forEach((el) => el.remove());
+                    await new Promise((r) => setTimeout(r, 300));
+                } catch (e) {}
+            });
+
+            // await scrollUntil(page, {
+            //     sleepMillis: 200,
+            //     maybeStop: async ({ count, bodyChanged, scrollChanged }) => {
+            //         return count > 3
+            //             && !bodyChanged
+            //             && !scrollChanged;
+            //     },
+            // });
+        } catch (e) {
+            log.debug(e.message, { url: page.url() });
+            errorCount++;
+        }
+    } while (errorCount < 10 && searchLimit > 0 && !page.isClosed());
+
+    if (errorCount > 5) {
+        log.warning(`Stopped getting results from ${page.url()}`);
+    }
+};
+
+/**
  * Get posts until it reaches the given max
  */
 export const getPostUrls = async (page: Page, {

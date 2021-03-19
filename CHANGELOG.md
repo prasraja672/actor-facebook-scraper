@@ -1,3 +1,13 @@
+# 4.5.0
+
+Features:
+* Extend Scraper function
+* Search public directory
+* Scrolling optimization
+
+Fixes:
+* Handle Page timeout for long scrolls
+
 # 4.4.0
 
 * Cache optimization
