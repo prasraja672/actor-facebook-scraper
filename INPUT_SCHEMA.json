@@ -7,7 +7,7 @@
         "startUrls": {
             "title": "Start urls",
             "description": "Can provide either existing pages or business listing in the format https://www.facebook.com/biz/",
-            "default": [{ "url": "https://www.facebook.com/apifytech/" }],
+            "default": [],
             "prefill": [{ "url": "https://www.facebook.com/apifytech/" }],
             "example": [
                 { "url": "https://www.facebook.com/apifytech" },
