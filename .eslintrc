@@ -1,7 +1,7 @@
 {
     "extends": [
         "plugin:@typescript-eslint/recommended",
-        "@apify"
+        "@apify/ts"
     ],
     "env": {
         "node": true,

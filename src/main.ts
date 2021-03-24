@@ -304,7 +304,7 @@ Apify.main(async () => {
             },
         },
         browserPoolOptions: {
-            maxOpenPagesPerBrowser: maxConcurrency,
+            maxOpenPagesPerBrowser: 1, // required to use one IP per tab
         },
         persistCookiesPerSession: sessionStorage !== '',
         handlePageTimeoutSecs, // more comments, less concurrency

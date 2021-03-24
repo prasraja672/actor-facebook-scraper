@@ -169,10 +169,10 @@ export const getPagesFromSearch = async function* (page: Page, searchLimit: numb
             log.debug(e.message, { url: page.url() });
             errorCount++;
         }
-    } while (errorCount < 10 && searchLimit > 0 && !page.isClosed());
+    } while (errorCount < 6 && searchLimit > 0 && !page.isClosed());
 
-    if (errorCount > 5) {
-        log.warning(`Stopped getting results from ${page.url()}`);
+    if (errorCount > 4) {
+        throw new Error(`Stopped getting results from ${page.url()}, retrying`);
     }
 };
 
