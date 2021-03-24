@@ -295,6 +295,7 @@
             "title": "Max post date",
             "description": "Posts are retrieved from newest to oldest. Use this setting to limit how many posts in the past it should fetch.",
             "example": "3 days",
+            "pattern": "^(today|yesterday|(\\d+)\\s?(minute|second|day|hour|month|year|week)s)|\\d{4}\\-\\d{2}\\-\\d{2})$",
             "type": "string",
             "editor": "textfield"
         },
@@ -302,6 +303,7 @@
             "title": "Min post date",
             "description": "Set the minimum post date, remembering that posts start from newest to oldest, it will skip the newest posts up to the specified date",
             "example": "2020-01-01",
+            "pattern": "^(today|yesterday|(\\d+)\\s?(minute|second|day|hour|month|year|week)s)|\\d{4}\\-\\d{2}\\-\\d{2})$",
             "type": "string",
             "editor": "textfield"
         },
@@ -324,6 +326,7 @@
             "title": "Minimum comment date",
             "description": "Limit the minimum date for comments",
             "example": "2020-01-01",
+            "pattern": "^(today|yesterday|(\\d+)\\s?(minute|second|day|hour|month|year|week)s)|\\d{4}\\-\\d{2}\\-\\d{2})$",
             "type": "string",
             "editor": "textfield"
         },
@@ -339,6 +342,7 @@
             "title": "Max review date",
             "description": "Limit the date of the reviews",
             "example": "2020-01-01",
+            "pattern": "^(today|yesterday|(\\d+)\\s?(minute|second|day|hour|month|year|week)s)|\\d{4}\\-\\d{2}\\-\\d{2})$",
             "type": "string",
             "editor": "textfield"
         },
