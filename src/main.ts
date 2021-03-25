@@ -292,6 +292,9 @@ Apify.main(async () => {
         sessionPoolOptions: {
             persistStateKeyValueStoreId: sessionStorage || undefined,
             maxPoolSize: sessionStorage ? 1 : undefined,
+            sessionOptions: {
+                maxErrorScore: 1,
+            },
         },
         maxRequestRetries: 5,
         maxConcurrency,
