@@ -394,7 +394,7 @@ Apify.main(async () => {
 
             await page.evaluateOnNewDocument(() => {
                 const f = () => {
-                    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="accept-cookie-banner-label"],#accept-cookie-banner-label')) {
+                    for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="cookie-policy-dialog-accept-button"],[data-cookiebanner="accept_button"],#accept-cookie-banner-label')) {
                         if (btn) {
                             btn.click();
                         }
