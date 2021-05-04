@@ -25,7 +25,6 @@ const { log, puppeteer } = Apify.utils;
 const {
     getUrlLabel,
     setLanguageCodeToCookie,
-    userAgents,
     normalizeOutputPageUrl,
     extractUsernameFromUrl,
     generateSubpagesFromUrl,
@@ -293,10 +292,10 @@ Apify.main(async () => {
             persistStateKeyValueStoreId: sessionStorage || undefined,
             maxPoolSize: sessionStorage ? 1 : undefined,
             sessionOptions: {
-                maxErrorScore: 1,
+                maxErrorScore: 0.5,
             },
         },
-        maxRequestRetries: 5,
+        maxRequestRetries: 10,
         maxConcurrency,
         proxyConfiguration: proxyConfig,
         launchContext: {
@@ -320,7 +319,7 @@ Apify.main(async () => {
             await setLanguageCodeToCookie(language, page);
 
             await executeOnDebug(async () => {
-                await page.exposeFunction('logMe', (...args) => {
+                await page.exposeFunction('logMe', (...args: any[]) => {
                     console.log(...args); // eslint-disable-line no-console
                 });
             });
@@ -375,17 +374,17 @@ Apify.main(async () => {
 
             // listing need to start in a desktop version
             // page needs a mobile viewport
-            const { data } = useMobile
-                ? userAgents.mobile()
-                : userAgents.desktop();
+            const userAgent = useMobile
+                ? 'Mozilla/5.0 (Linux; Android 10; SM-A205U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36'
+                : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_3_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36';
 
-            request.userData.userAgent = data.userAgent;
+            request.userData.userAgent = userAgent;
 
             await page.emulate({
-                userAgent: data.userAgent,
+                userAgent,
                 viewport: {
-                    height: useMobile ? 740 : 1080,
-                    width: useMobile ? 360 : 1920,
+                    height: useMobile ? 700 : 1080,
+                    width: useMobile ? 400 : 1920,
                     hasTouch: useMobile,
                     isMobile: useMobile,
                     deviceScaleFactor: useMobile ? 2 : 1,
@@ -404,7 +403,7 @@ Apify.main(async () => {
                 setTimeout(f);
             });
         }],
-        handlePageFunction: async ({ request, page, session }) => {
+        handlePageFunction: async ({ request, page, session, browserController }) => {
             const { userData } = request;
 
             const label: FbLabel = userData.label; // eslint-disable-line prefer-destructuring
@@ -434,10 +433,10 @@ Apify.main(async () => {
                     try {
                         await Promise.all([
                             page.waitForSelector(CSS_SELECTORS.MOBILE_META, {
-                                timeout: 3000, // sometimes the page takes a while to load the responsive interactive version
+                                timeout: 15000, // sometimes the page takes a while to load the responsive interactive version
                             }),
                             page.waitForSelector(CSS_SELECTORS.MOBILE_BODY_CLASS, {
-                                timeout: 3000, // correctly detected android. if this isn't the case, the image names will change
+                                timeout: 15000, // correctly detected android. if this isn't the case, the image names will change
                             }),
                         ]);
                     } catch (e) {
@@ -678,8 +677,8 @@ Apify.main(async () => {
                     log.warning(e.message, e.toJSON());
 
                     if (['captcha', 'mobile-meta', 'getFieldInfos', 'internal', 'login', 'threshold'].includes(e.meta.namespace)) {
-                        // the session is really bad
-                        session?.retire();
+                        session.retire();
+                        await browserController.close(page);
                     }
                 }
 

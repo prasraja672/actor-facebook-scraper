@@ -1,3 +1,8 @@
+# 4.5.2
+
+Fixes:
+* Hotfix for critical page layout components
+
 # 4.5.0
 
 Features:

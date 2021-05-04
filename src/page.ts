@@ -529,11 +529,11 @@ export const getFieldInfos = async (page: Page, currentState: Partial<FbPage>): 
         switch (key) {
             case 'categories':
                 out[key] = uniqueNonEmptyArray((out[key] || [])
-                    .concat(result[index].map(s => s.split(' · ')).flat())) || null;
+                    .concat(result[index].map(s => s.split(/[·\n]+/gm)).flat()).map(s => s.trim()).filter(s => s)) || null;
                 break;
             case 'priceRange':
                 out[key] = out[key] || (result[index]
-                    .map(s => (s.split(' · ', 2)[1])) // $ · $$$
+                    .map(s => (s.split(/·*/g, 2)[1])) // $ · $$$
                     .filter(s => s))[0] || null;
                 break;
             case 'address':

@@ -1,8 +1,7 @@
 import Apify from 'apify';
-import type { ElementHandle, Page } from 'puppeteer';
+import type { ElementHandle, HTTPResponse, Page } from 'puppeteer';
 import * as moment from 'moment';
 import * as vm from 'vm';
-import UserAgents = require('user-agents');
 
 import { InfoError } from './error';
 import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, DESKTOP_ADDRESS, LABELS } from './constants';
@@ -170,45 +169,6 @@ export const executeOnDebug = async (cb: () => Promise<void>) => {
 };
 
 /**
- * Return new user agents from initializer. Filter some vendors out to make the output predictable
- */
-const initializeUserAgents = () => {
-    type UA = { userAgent: string; viewportHeight: number; viewportWidth: number };
-
-    const mobileUserAgents = new UserAgents(({ userAgent, viewportHeight, viewportWidth }: UA) => {
-        return (
-            viewportHeight >= 640
-            && viewportWidth >= 360
-            && /^Mozilla/.test(userAgent)
-            && /(Pixel|SG-|ONE)/.test(userAgent) // galaxy / pixel / oneplus
-            && /(Android [7891])/.test(userAgent)
-            && !/(Firefox|SM-|YAL)/.test(userAgent)
-            && /\d$/.test(userAgent)
-            && userAgent.length <= 140
-        );
-    });
-
-    const desktopUserAgents = new UserAgents(({ userAgent, viewportHeight, viewportWidth }: UA) => {
-        return (
-            viewportHeight >= 600
-            && viewportWidth >= 800
-            && /^Mozilla/.test(userAgent)
-            && !/Firefox/.test(userAgent)
-            && /\d$/.test(userAgent)
-            && /(X11|Intel Mac OS X)/.test(userAgent)
-            && userAgent.length <= 120
-        );
-    });
-
-    return {
-        desktop: () => desktopUserAgents.random(),
-        mobile: () => mobileUserAgents.random(),
-    };
-};
-
-export const userAgents = initializeUserAgents();
-
-/**
  * Remove duplicates from array while filtering falsy values
  */
 export const uniqueNonEmptyArray = <T extends any[]>(value: T) => [...new Set(value)].filter(s => s);
@@ -335,22 +295,22 @@ export const createSelectorFromImageSrc = (names: string[]) => {
  * Text selectors that uses image names as a starting point
  */
 export const imageSelectors = {
-    checkins: createSelectorFromImageSrc(['a0b87sO1_bq', '9Zt6zuj8e1D']),
-    website: createSelectorFromImageSrc(['TcXGKbk-rV1', 'xVA3lB-GVep', 'EaDvTjOwxIV', 'aE7VLFYMYdl', '_E0siE7VRxg']),
-    categories: createSelectorFromImageSrc(['Knsy-moHXi6', 'LwDWwC1d0Rx', '3OfQvJdYD_W', 'Esxx6rJcLfG']),
-    email: createSelectorFromImageSrc(['C1eWXyukMez', 'vKDzW_MdhyP', 'vPTKpTJr2Py']),
-    info: createSelectorFromImageSrc(['u_owK2Sz5n6', 'fTt3W6Nw8z-', 'ufx6pe0BYZ9', 'nUK82gYKq3c']), // about / founded
-    impressum: createSelectorFromImageSrc(['7Pg05R2u_QQ', 'xJ79lPp3fxx']),
-    instagram: createSelectorFromImageSrc(['EZj5-1P4vhh', 'kupnBwrQuQt']),
-    twitter: createSelectorFromImageSrc(['IP-E0-f5J0m', '4D5dB8JnGdq']),
+    checkins: createSelectorFromImageSrc(['a0b87sO1_bq', '9Zt6zuj8e1D', '2lBnDDIRCyn']),
+    website: createSelectorFromImageSrc(['TcXGKbk-rV1', 'xVA3lB-GVep', 'EaDvTjOwxIV', 'aE7VLFYMYdl', '_E0siE7VRxg', 'ZWx4MakmUd4', 'D9kpGIZvg_a']),
+    categories: createSelectorFromImageSrc(['Knsy-moHXi6', 'LwDWwC1d0Rx', '3OfQvJdYD_W', 'Esxx6rJcLfG', 'Ae8V14AHXF3', 'I5oOkD-Jgg9']),
+    email: createSelectorFromImageSrc(['C1eWXyukMez', 'vKDzW_MdhyP', 'vPTKpTJr2Py', '7wycyFqCurV', 'usNPpfkTtic']),
+    info: createSelectorFromImageSrc(['u_owK2Sz5n6', 'fTt3W6Nw8z-', 'ufx6pe0BYZ9', 'nUK82gYKq3c', 'EXVJNaeBMtn']), // about / founded
+    impressum: createSelectorFromImageSrc(['7Pg05R2u_QQ', 'xJ79lPp3fxx', 'W1Gz3-6Jba9']),
+    instagram: createSelectorFromImageSrc(['EZj5-1P4vhh', 'kupnBwrQuQt', '4BDZkGZPYV7']),
+    twitter: createSelectorFromImageSrc(['IP-E0-f5J0m', '4D5dB8JnGdq', 'ITwSn0piq6L']),
     youtube: createSelectorFromImageSrc(['MyCpzAb80U1']),
     overview: createSelectorFromImageSrc(['uAsvCr33XaU', 'J7QgCgbppF8']),
     awards: createSelectorFromImageSrc(['rzXNHRgEfui', 'catvAig7x2x']),
     mission: createSelectorFromImageSrc(['z-wfU5xgk6Z', '3vccp1jK8fn']),
     address: createSelectorFromImageSrc(['h2e1qHNjIzG', 'ya-WX5CZARc']),
-    phone: createSelectorFromImageSrc(['6oGknb-0EsE', 'znYEAkatLCe', 'BaiUsFiMGWy']),
-    priceRange: createSelectorFromImageSrc(['q-WY9vrfkFZ', 'cAfaJdw2ZpN']),
-    products: createSelectorFromImageSrc(['bBMZ-3vnEih', '9gnPGIXZf0x']),
+    phone: createSelectorFromImageSrc(['6oGknb-0EsE', 'znYEAkatLCe', 'BaiUsFiMGWy', 'BkWgVZPGfa0']),
+    priceRange: createSelectorFromImageSrc(['q-WY9vrfkFZ', 'cAfaJdw2ZpN', 'RoNYAkqnZi0']),
+    products: createSelectorFromImageSrc(['bBMZ-3vnEih', '9gnPGIXZf0x', 'kqozvTg_ESH']),
     transit: createSelectorFromImageSrc(['uQHLMTQ0fUS', 'hHYECN5fVxU']),
     payment: createSelectorFromImageSrc(['Dx9c291MaDt', '8qES65kbIT8']),
 };
@@ -443,7 +403,7 @@ export const pageSelectors = {
             return 0;
         }
 
-        return els[0].evaluate(async (el) => {
+        return els[0].evaluate(async (el: HTMLDivElement) => {
             const parent = el.closest<HTMLDivElement>('[style="padding: 0 0 0 0"]');
 
             if (!parent || !parent.innerText) {
@@ -857,11 +817,11 @@ export const clickSeeMore = async (page: Page) => {
 
             log.info('Clicking see more', { url: page.url() });
 
-            const promise = page.waitForResponse((r) => {
+            const promise = page.waitForResponse((r: HTTPResponse) => {
                 return r.url().includes('ajax/bootloader-endpoint');
             }, { timeout: 10000 });
 
-            await seeMore.evaluate(async (e) => {
+            await seeMore.evaluate(async (e: HTMLDivElement) => {
                 e.closest<HTMLDivElement>('[role="button"]')?.click();
             });
             await promise;
