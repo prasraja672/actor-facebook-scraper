@@ -3,7 +3,7 @@
     "version": "4.5.3",
     "description": "Extract public profile information from Facebook pages and service listings. The actor scrapes data from Facebook posts, comments, reviews, and more.",
     "dependencies": {
-        "apify": "^1.1.2",
+        "apify": "^1.2.1",
         "puppeteer": "*",
         "async-atomic-store": "^1.2.2",
         "delayable-idle-abort-promise": "^1.0.0",
