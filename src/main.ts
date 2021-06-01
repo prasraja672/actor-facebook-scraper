@@ -726,11 +726,11 @@ Apify.main(async () => {
     const finished = new Date().toISOString();
 
     // generate the dataset from all the crawled pages
-    await Apify.pushData([...state.values()].filter(s => s.categories?.length).map(val => ({
-        ...val,
-        "#version": 3, // current data format version
-        '#finishedAt': finished,
-    })));
+    await Apify.pushData([...state.values()].map(val => {
+        val["#version"] = 3; // current data format version
+        val['#finishedAt'] = finished;
+        return val;
+    }));
 
     residentialWarning();
 
