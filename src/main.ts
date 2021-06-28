@@ -16,7 +16,7 @@ import {
     getPagesFromSearch,
 } from './page';
 import { statePersistor, emptyState } from './storage';
-import type { Schema, FbLabel, FbSection, FbPage } from './definitions';
+import type { Schema, FbLabel, FbSection, FbPage, FbCommentsMode, FbComment, FbPost } from './definitions';
 
 import LANGUAGES = require('./languages.json');
 
@@ -37,6 +37,8 @@ const {
     photoToPost,
     extendFunction,
     createAddPageSearch,
+    overrideUserData,
+    fromStartUrls,
 } = fns;
 
 Apify.main(async () => {
@@ -56,7 +58,9 @@ Apify.main(async () => {
         maxCommentDate,
         maxReviews = 3,
         commentsMode = 'RANKED_THREADED',
-        scrapeAbout = true,
+        scrapeAbout = false,
+        countryCode = false,
+        minCommentDate,
         scrapeReviews = true,
         scrapePosts = true,
         scrapeServices = true,
@@ -66,6 +70,7 @@ Apify.main(async () => {
         debugLog = false,
         minPostComments,
         minPosts,
+        maxConcurrency = 20,
         searchPages = [],
         searchLimit = 10,
     } = input;
@@ -110,21 +115,12 @@ Apify.main(async () => {
 
     log.info(`Will use ${handlePageTimeoutSecs}s timeout for page`);
 
-    const startUrlsRequests = new Apify.RequestList({
-        sources: startUrls,
-    });
-
-    await startUrlsRequests.initialize();
-
     if (!(language in LANGUAGES)) {
         throw new Error(`Selected language "${language}" isn't supported`);
     }
 
     const { map, state, persistState } = await statePersistor();
     const elapsed = stopwatch();
-
-    log.info(`Starting crawler with ${startUrlsRequests.length()} urls`);
-    log.info(`Using language "${(LANGUAGES as any)[language]}" (${language})`);
 
     const postDate = minMaxDates({
         max: minPostDate,
@@ -143,6 +139,7 @@ Apify.main(async () => {
 
     const commentDate = minMaxDates({
         min: maxCommentDate,
+        max: minCommentDate,
     });
 
     if (commentDate.minDate) {
@@ -159,19 +156,17 @@ Apify.main(async () => {
 
     const requestQueue = await Apify.openRequestQueue();
 
-    let nextRequest;
-    const processedRequests = new Set<Apify.Request>();
-
-    // eslint-disable-next-line no-cond-assign
-    while (nextRequest = await startUrlsRequests.fetchNextRequest()) {
-        processedRequests.add(nextRequest);
-    }
-
-    if (startUrls?.length && !processedRequests.size) {
+    if (!startUrls?.length) {
         throw new Error('No requests were loaded from startUrls');
     }
 
-    const initSubPage = async (subpage: { url: string; section: FbSection, useMobile: boolean }, url: string) => {
+    if (proxyConfig?.groups?.includes('RESIDENTIAL')) {
+        proxyConfig.countryCode = countryCode ? language.split('-')?.[1] ?? 'US' : 'US';
+    }
+
+    log.info(`Using language "${(LANGUAGES as any)[language]}" (${language})`);
+
+    const initSubPage = async (subpage: { url: string; section: FbSection, useMobile: boolean }, request: Apify.Request) => {
         if (subpage.section === 'home') {
             const username = extractUsernameFromUrl(subpage.url);
 
@@ -182,7 +177,7 @@ Apify.main(async () => {
                     ...emptyState(),
                     pageUrl: normalizeOutputPageUrl(subpage.url),
                     '#url': subpage.url,
-                    '#ref': url,
+                    '#ref': request.url,
                     ...value,
                 };
             });
@@ -191,9 +186,10 @@ Apify.main(async () => {
         await requestQueue.addRequest({
             url: subpage.url,
             userData: {
+                override: request.userData.override,
                 label: LABELS.PAGE,
                 sub: subpage.section,
-                ref: url,
+                ref: request.url,
                 useMobile: subpage.useMobile,
             },
         }, { forefront: true });
@@ -201,7 +197,6 @@ Apify.main(async () => {
 
     const pageInfo = [
         ...(scrapePosts ? ['posts'] : []),
-        ...(scrapeAbout ? ['about'] : []),
         ...(scrapeReviews ? ['reviews'] : []),
         ...(scrapeServices ? ['services'] : []),
     ] as FbSection[];
@@ -212,14 +207,16 @@ Apify.main(async () => {
         await addPageSearch(search);
     }
 
-    for (const request of processedRequests) {
+    let startUrlCount = 0;
+
+    for await (const request of fromStartUrls(startUrls)) {
         try {
             let { url } = request;
             const urlType = getUrlLabel(url);
 
             if (urlType === LABELS.PAGE) {
                 for (const subpage of generateSubpagesFromUrl(url, pageInfo)) {
-                    await initSubPage(subpage, url);
+                    await initSubPage(subpage, request);
                 }
             } else if (urlType === LABELS.SEARCH) {
                 await addPageSearch(url);
@@ -227,6 +224,7 @@ Apify.main(async () => {
                 await requestQueue.addRequest({
                     url,
                     userData: {
+                        override: request.userData.override,
                         label: urlType,
                         useMobile: false,
                     },
@@ -241,16 +239,19 @@ Apify.main(async () => {
                 await requestQueue.addRequest({
                     url,
                     userData: {
+                        override: request.userData.override,
                         label: LABELS.POST,
                         useMobile: false,
                         username,
-                        canonical: storyFbToDesktopPermalink(url)?.toString(),
+                        canonical: storyFbToDesktopPermalink({ url, username })?.toString(),
                     },
                 });
 
                 // this is for home
-                await initSubPage(generateSubpagesFromUrl(url, [])[0], url);
+                await initSubPage(generateSubpagesFromUrl(url, [])[0], request);
             }
+
+            startUrlCount++;
         } catch (e) {
             if (e instanceof InfoError) {
                 // We want to inform the rich error before throwing
@@ -261,10 +262,33 @@ Apify.main(async () => {
         }
     }
 
-    const maxConcurrency = process.env?.MAX_CONCURRENCY ? +process.env.MAX_CONCURRENCY : undefined;
+    log.info(`Starting with ${startUrlCount} URLs`);
+
     const cache = resourceCache([
         /rsrc\.php/,
     ]);
+
+    const extendOutputFunction = await extendFunction({
+        map: async (data: Partial<FbPage>) => data,
+        output: async (data) => {
+            const finished = new Date().toISOString();
+
+            data["#version"] = 4; // current data format version
+            data['#finishedAt'] = finished;
+
+            await Apify.pushData(data);
+        },
+        input,
+        key: 'extendOutputFunction',
+        helpers: {
+            state,
+            LABELS,
+            fns,
+            postDate,
+            commentDate,
+            reviewDate,
+        },
+    });
 
     const extendScraperFunction = await extendFunction({
         output: async () => {}, // eslint-disable-line @typescript-eslint/no-empty-function
@@ -362,8 +386,6 @@ Apify.main(async () => {
                     '.woff2',
                     '.ttf',
                     '.ico',
-                    'scontent-',
-                    'scontent.fplu',
                     'safe_image.php',
                     'static_map.php',
                     'ajax/bz',
@@ -403,12 +425,12 @@ Apify.main(async () => {
                 setTimeout(f);
             });
         }],
-        handlePageFunction: async ({ request, page, session, browserController }) => {
+        handlePageFunction: async ({ request, page, session, response, browserController }) => {
             const { userData } = request;
 
             const label: FbLabel = userData.label; // eslint-disable-line prefer-destructuring
 
-            log.debug(`Visiting page ${request.url}`);
+            log.debug(`Visiting page ${request.url}`, userData);
 
             try {
                 if (page.url().includes('?next=')) {
@@ -456,7 +478,7 @@ Apify.main(async () => {
                     });
                 }
 
-                if (await page.$eval('title', (el) => el.textContent === 'Error')) {
+                if (await page.$eval('title', (el) => el.textContent === 'Error') || response.statusCode === 500) {
                     throw new InfoError('Facebook internal error, maybe it\'s going through instability, it will be retried', {
                         url: request.url,
                         namespace: 'internal',
@@ -486,7 +508,7 @@ Apify.main(async () => {
 
                     for (const url of pagesUrls) {
                         for (const subpage of generateSubpagesFromUrl(url, pageInfo)) {
-                            await initSubPage(subpage, request.url);
+                            await initSubPage(subpage, request);
                         }
                     }
 
@@ -499,7 +521,7 @@ Apify.main(async () => {
                         count++;
 
                         for (const subpage of generateSubpagesFromUrl(url, pageInfo)) {
-                            await initSubPage(subpage, request.url);
+                            await initSubPage(subpage, request);
                         }
                     }
 
@@ -565,11 +587,29 @@ Apify.main(async () => {
                             break;
                         // Posts
                         case 'posts': {
+                            let max = maxPosts;
+                            let date = postDate;
+
+                            const { overriden, settings } = overrideUserData(input, request);
+
+                            if (overriden) {
+                                if (settings?.maxPosts) {
+                                    max = settings.maxPosts;
+                                }
+
+                                if (settings?.maxPostDate || settings?.minPostDate) {
+                                    date = minMaxDates({
+                                        min: settings.maxPostDate,
+                                        max: settings.minPostDate,
+                                    });
+                                }
+                            }
+
                             // We don't do anything here, we enqueue posts to be
                             // read on their own phase/label
                             const postCount = await getPostUrls(page, {
-                                max: maxPosts,
-                                date: postDate,
+                                max,
+                                date,
                                 username,
                                 requestQueue,
                                 request,
@@ -634,30 +674,76 @@ Apify.main(async () => {
                         getPostContent(page),
                     ]);
 
-                    const postComments = await getPostComments(page, {
-                        max: maxPostComments,
-                        mode: commentsMode,
-                        date: commentDate,
+                    const { overriden, settings } = overrideUserData(input, request);
+                    let mode: FbCommentsMode = commentsMode;
+                    let date: typeof commentDate = commentDate;
+                    let max = maxPostComments;
+                    let minComments = minPostComments;
+
+                    if (overriden) {
+                        if (settings?.minCommentDate || settings?.maxCommentDate) {
+                            date = minMaxDates({
+                                max: settings.minCommentDate,
+                                min: settings.maxCommentDate,
+                            });
+                        }
+
+                        if (settings?.maxPostComments) {
+                            max = settings.maxPostComments;
+                        }
+
+                        if (settings?.commentsMode) {
+                            mode = settings.commentsMode;
+                        }
+
+                        if (settings?.minPostComments) {
+                            minComments = settings.minPostComments;
+                        }
+                    }
+
+                    const existingPost = await map.read(username).then((p) => p?.posts?.find((post) => post.postUrl === content.postUrl));
+                    const postContent: FbPost = existingPost || {
+                        ...content as FbPost,
+                        postStats,
+                        postComments: {
+                            count: 0,
+                            mode,
+                            comments: [],
+                        },
+                    };
+
+                    if (!existingPost) {
+                        await map.append(username, async (value) => {
+                            return {
+                                ...value,
+                                posts: [
+                                    postContent,
+                                    ...(value?.posts ?? []),
+                                ],
+                            } as Partial<FbPage>;
+                        });
+                    }
+
+                    const postCount = await getPostComments(page, {
+                        max,
+                        mode,
+                        date,
                         request,
-                        minPostComments,
+                        add: async (comment) => {
+                            await map.append(username, async (value) => {
+                                postContent.postComments.comments.push(comment);
+                                return value;
+                            });
+                        },
                     });
 
                     await map.append(username, async (value) => {
-                        return {
-                            ...value,
-                            posts: [
-                                {
-                                    ...content,
-                                    postStats,
-                                    postComments,
-                                },
-                                ...(value?.posts ?? []),
-                            ],
-                        } as Partial<FbPage>;
+                        postContent.postComments.count = postCount;
+                        return value;
                     });
 
-                    if (maxPostComments && minPostComments && (postComments?.comments?.length ?? 0) < minPostComments) {
-                        throw new InfoError(`Minimum post count ${minPostComments} not met, retrying`, {
+                    if (max && minComments && (postContent?.postComments?.comments?.length ?? 0) < minComments) {
+                        throw new InfoError(`Minimum post count ${minComments} not met, retrying`, {
                             namespace: 'threshold',
                             url: page.url(),
                         });
@@ -723,14 +809,10 @@ Apify.main(async () => {
 
     log.info('Generating dataset...');
 
-    const finished = new Date().toISOString();
-
     // generate the dataset from all the crawled pages
-    await Apify.pushData([...state.values()].map(val => {
-        val["#version"] = 3; // current data format version
-        val['#finishedAt'] = finished;
-        return val;
-    }));
+    for (const page of state.values()) {
+        await extendOutputFunction(page, {});
+    }
 
     residentialWarning();
 

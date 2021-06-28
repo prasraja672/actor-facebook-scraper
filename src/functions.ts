@@ -1,13 +1,38 @@
 import Apify from 'apify';
-import type { ElementHandle, HTTPResponse, Page } from 'puppeteer';
+import type { ElementHandle, HTTPResponse, HTTPRequest, Page } from 'puppeteer';
 import * as moment from 'moment';
 import * as vm from 'vm';
 
 import { InfoError } from './error';
 import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, DESKTOP_ADDRESS, LABELS } from './constants';
-import type { FbLocalBusiness, FbSection, FbLabel, FbReview } from './definitions';
+import type { FbLocalBusiness, FbSection, FbLabel, FbReview, Schema, FbError, FbGraphQl, FbFT } from './definitions';
 
 const { log, sleep } = Apify.utils;
+
+/**
+ * Transform a input.startUrls, parse requestsFromUrl items as well,
+ * into regular urls. Returns an async generator that should be iterated over.
+ *
+ * @example
+ *   for await (const req of fromStartUrls(input.startUrls)) {
+ *     await requestQueue.addRequest(req);
+ *   }
+ *
+ */
+export const fromStartUrls = async function* (startUrls: any[], name = 'STARTURLS') {
+    const rl = await Apify.openRequestList(name, startUrls);
+
+    let rq: Apify.Request | null;
+
+    // eslint-disable-next-line no-cond-assign
+    while (rq = await rl.fetchNextRequest()) {
+        yield rq;
+    }
+};
+
+export const isError = (value: FbError | FbGraphQl | null): value is FbError => {
+    return !!(value && ('errors' in value));
+};
 
 export const createAddPageSearch = (requestQueue: Apify.RequestQueue) => async (termOrUrl?: string) => {
     if (!termOrUrl) {
@@ -56,25 +81,27 @@ export const createAddPageSearch = (requestQueue: Apify.RequestQueue) => async (
 /**
  * Takes a story.php and turns into a cleaned desktop permalink.php
  */
-export const storyFbToDesktopPermalink = (url?: string | null, postId?: string) => {
+export const storyFbToDesktopPermalink = ({ url, postId, username }: { url?: string | null, postId?: string, username?: string }) => {
     if (!url) {
         return null;
     }
 
     const parsed = new URL(url, DESKTOP_ADDRESS);
+    parsed.host = DESKTOP_HOST;
 
     if (!postId) {
         if (parsed.searchParams.has('story_fbid')
             && parsed.searchParams.has('id')
-            && !parsed.pathname.includes('/photos')) {
+            && !parsed.pathname.includes('/photos')
+            && !parsed.pathname.includes('/video')) {
             parsed.pathname = '/permalink.php';
         }
-    } else {
-        parsed.pathname = `${parsed.pathname.split('/', 2)[1]}/posts/${postId}`;
+    } else if (!parsed.pathname.includes('/permalink.php') || !parsed.pathname.includes('/story.php')) {
+        parsed.pathname = `${username || parsed.pathname.split('/', 2)[1]}/posts/${postId}`;
     }
 
     parsed.searchParams.forEach((_, key) => {
-        if (!['story_fbid', 'id', 'substory_index', 'type'].includes(key)) {
+        if (!(parsed.pathname.includes('/posts') ? [] : ['story_fbid', 'id', 'substory_index', 'type']).includes(key)) {
             parsed.searchParams.delete(key);
         }
     });
@@ -129,13 +156,17 @@ export const deferred = <T = any>() => {
 
     const promise = new Promise<T | undefined>((r1, r2) => {
         resolve = (arg) => {
-            resolved = true;
-            r1(arg);
+            if (!resolved) {
+                resolved = true;
+                r1(arg);
+            }
         };
 
         reject = (arg) => {
-            resolved = true;
-            r2(arg);
+            if (!resolved) {
+                resolved = true;
+                r2(arg);
+            }
         };
     });
 
@@ -199,6 +230,30 @@ export const evaluateFilterMap = async <E extends Element, C extends (el: E) => 
 };
 
 /**
+ * Get option overrides from userData
+ */
+export const overrideUserData = (input: Schema, request: Apify.RequestOptions): { overriden: boolean, settings: Partial<Schema> } => {
+    if (!request.userData?.override) {
+        return {
+            overriden: false,
+            settings: {},
+        };
+    }
+
+    const { override } = request.userData;
+
+    log.debug('Overriden', { override });
+
+    return {
+        overriden: true,
+        settings: {
+            ...input,
+            ...override,
+        },
+    };
+};
+
+/**
  * Puppeteer $$ wrapper that gives some context and info
  * if the selector is missing
  */
@@ -224,7 +279,7 @@ export const createPageSelector = <E extends Element, C extends (els: ElementHan
                     }
                 }
 
-                throw new InfoError(`${namespace} page selector not found`, {
+                throw new InfoError(`"${namespace}" page selector not found`, {
                     namespace,
                     selector,
                     url: page.url(),
@@ -362,35 +417,38 @@ export const pageSelectors = {
     // get metadata from posts
     posts: createPageSelector(CSS_SELECTORS.POST_TIME, 'posts', async (els) => {
         return evaluateFilterMap(els, async (el) => {
-            const article = el.closest<HTMLDivElement>('[role="article"]');
+            const article = el.closest<HTMLDivElement>('article');
 
             if (article) {
-                const isPinned = !!(article.querySelector('i[data-tooltip-content].img'));
-                const { utime } = (el as HTMLElement).dataset;
-                const url = el.closest<HTMLAnchorElement>('a[href]:not([data-ft])')?.href;
+                const isPinned = !!(article.parentElement?.querySelector('article ~ img'));
+                const url = article.querySelector<HTMLAnchorElement>('a[href^="/story.php"]')?.href;
 
-                if (!utime || !url) {
-                    return;
+                if (!url) {
+                    return null;
                 }
 
-                const postId = article.querySelector<HTMLInputElement>('[name="ft_ent_identifier"]')?.value;
+                const { ft } = article.dataset;
 
                 const value = (() => {
                     try {
                         const result = {
-                            publishedTime: +utime * 1000,
+                            ft: JSON.parse(ft as any) as FbFT,
                             url,
                             isPinned,
-                            postId,
                         };
 
                         return result;
-                    } catch (e) {} // eslint-disable-line
+                    } catch (e) {
+                        return null;
+                    }
                 })();
 
                 try {
-                    article.parentElement!.parentElement!.remove();
-                    await new Promise((r) => setTimeout(r, 200));
+                    article.parentElement!.parentElement!.parentElement!.remove();
+                    await new Promise((r) => setTimeout(r, 1000));
+
+                    window.scrollBy({ top: window.innerHeight });
+                    window.scrollBy({ top: 0 });
                 } catch (e) {} // eslint-disable-line
 
                 return value;
@@ -556,7 +614,7 @@ export const photoToPost = (url: string) => {
     const matches = `${url}`.match(/\/photos\/a\.(\d+)/);
 
     if (matches?.[1]) {
-        return storyFbToDesktopPermalink(url, matches[1])?.toString();
+        return storyFbToDesktopPermalink({ url, postId: matches[1] })?.toString();
     }
 
     return url;
@@ -620,19 +678,15 @@ export const generateSubpagesFromUrl = (
     }> = [{ url: base.toString(), section: 'home', useMobile: true }];
 
     return urls.concat(pages.map(sub => {
-        const isPostPage = sub === 'posts';
         const subUrl = new URL(base);
-        subUrl.pathname += `/${sub}`;
 
-        // post needs to be desktop
-        if (isPostPage) {
-            subUrl.hostname = DESKTOP_HOST;
-        }
+        subUrl.pathname += `/${sub}`;
+        subUrl.hostname = MOBILE_HOST;
 
         return {
             url: subUrl.toString(),
             section: sub,
-            useMobile: !isPostPage,
+            useMobile: true,
         };
     }));
 };
@@ -748,9 +802,9 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
                 break;
             }
 
-            await page.evaluate(async () => {
+            await page.evaluate(() => {
                 window.scrollBy({
-                    top: Math.round(window.innerHeight / 1.75) || 100,
+                    top: Math.round(window.innerHeight / 1.15) || 100,
                 });
             });
 
@@ -973,48 +1027,13 @@ export const resourceCache = (paths: RegExp[]) => {
     }>();
 
     return async (page: Page) => {
-        await page.setRequestInterception(true);
-
-        page.on('request', async (req) => {
-            const url = req.url();
-
-            if (req.resourceType() === 'image') {
-                // serve empty images so the `onload` events don't fail
-                if (url.includes('.jpg') || url.includes('.jpeg')) {
-                    return req.respond(images.jpg);
-                }
-
-                if (url.includes('.png')) {
-                    return req.respond(images.png);
-                }
-
-                if (url.includes('.gif')) {
-                    return req.respond(images.gif);
-                }
-            } else if (['script', 'stylesheet'].includes(req.resourceType()) && paths.some((path) => path.test(url))) {
-                const content = cache.get(url);
-
-                // log.debug('Cache', { url, headers: content?.headers, type: content?.contentType, length: content?.content?.length });
-
-                if (content?.loaded === true) {
-                    return req.respond({
-                        body: content.content,
-                        status: 200,
-                        contentType: content.contentType,
-                        headers: content.headers,
-                    });
-                }
-
-                cache.set(url, {
-                    loaded: false,
-                });
-            }
-
-            await req.continue();
-        });
-
-        page.on('response', async (res) => {
+        const response = async (res: HTTPResponse) => {
             try {
+                if (page.isClosed()) {
+                    await cleanup();
+                    return;
+                }
+
                 if (['script', 'stylesheet'].includes(res.request().resourceType())) {
                     const url = res.url();
                     const content = cache.get(url);
@@ -1041,9 +1060,73 @@ export const resourceCache = (paths: RegExp[]) => {
                     }
                 }
             } catch (e) {
+                await cleanup();
                 log.debug('Cache error', { e: e.message });
             }
-        });
+        };
+
+        const request = async (req: HTTPRequest) => {
+            if (page.isClosed()) {
+                await cleanup();
+                return;
+            }
+
+            const url = req.url();
+
+            try {
+                if (req.resourceType() === 'image') {
+                    // serve empty images so the `onload` events don't fail
+                    if (url.includes('.jpg') || url.includes('.jpeg')) {
+                        return await req.respond(images.jpg);
+                    }
+
+                    if (url.includes('.png')) {
+                        return await req.respond(images.png);
+                    }
+
+                    if (url.includes('.gif')) {
+                        return await req.respond(images.gif);
+                    }
+                } else if (['script', 'stylesheet'].includes(req.resourceType()) && paths.some((path) => path.test(url))) {
+                    const content = cache.get(url);
+
+                    // log.debug('Cache', { url, headers: content?.headers, type: content?.contentType, length: content?.content?.length });
+
+                    if (content?.loaded === true) {
+                        return await req.respond({
+                            body: content.content,
+                            status: 200,
+                            contentType: content.contentType,
+                            headers: content.headers,
+                        });
+                    }
+
+                    cache.set(url, {
+                        loaded: false,
+                    });
+                }
+
+                await req.continue();
+            } catch (e) {
+                await cleanup();
+                log.debug('Resource cache', { e: e.message });
+            }
+        };
+
+        const cleanup = async () => {
+            try {
+                await page.setRequestInterception(false);
+                page.off('request', request);
+                page.off('response', response);
+            } catch (e) {
+                log.debug('Cache', { error: e.message });
+            }
+        };
+
+        await page.setRequestInterception(true);
+
+        page.on('request', request);
+        page.on('response', response);
     };
 };
 

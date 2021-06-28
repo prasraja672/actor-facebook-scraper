@@ -1,3 +1,18 @@
+# 5.0.0
+
+Features:
+* Added country selection the same as language
+* Adjust max concurrency
+* Override settings per url
+* Save comments in memory even if it gets blocked
+* Detects rate limits and hard errors
+* Extend Output Function
+
+Changes:
+* Removing "About" section that requires login
+* Workaround for error 500
+* Dataset format
+
 # 4.5.2
 
 Fixes:

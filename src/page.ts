@@ -1,5 +1,5 @@
 import Apify from 'apify';
-import type { Page, Response } from 'puppeteer';
+import type { Page, HTTPResponse } from 'puppeteer';
 import DelayAbort, { AbortError } from 'delayable-idle-abort-promise';
 import * as escapeRegex from 'escape-string-regexp';
 import get = require('lodash.get');
@@ -16,8 +16,9 @@ import {
     storyFbToDesktopPermalink,
     MinMaxDates,
     dateRangeItemCounter,
+    isError,
 } from './functions';
-import { CSS_SELECTORS, DESKTOP_ADDRESS, LABELS } from './constants';
+import { CSS_SELECTORS, DESKTOP_ADDRESS, LABELS, PSN_POST_TYPE_BLACKLIST } from './constants';
 import { InfoError } from './error';
 
 const { log, sleep } = Apify.utils;
@@ -153,7 +154,7 @@ export const getPagesFromSearch = async function* (page: Page, searchLimit: numb
             await page.evaluate(async () => {
                 try {
                     [...document.querySelectorAll('div[data-bt]')].forEach((el) => el.remove());
-                    await new Promise((r) => setTimeout(r, 300));
+                    await new Promise((r) => setTimeout(r, 700));
                 } catch (e) {}
             });
 
@@ -199,17 +200,17 @@ export const getPostUrls = async (page: Page, {
 
     const start = stopwatch();
     const control = DelayAbort(60000);
-    const scrollingSleep = 200;
+    const scrollingSleep = 1500;
 
     const counter = dateRangeItemCounter(date);
 
     const getPosts = async () => {
         try {
-            const posts = await pageSelectors.posts(page, scrollingSleep * 10);
+            const posts = await pageSelectors.posts(page, scrollingSleep * 2);
             counter.empty(!posts.length);
             counter.add(posts.length);
 
-            for (const { isPinned, publishedTime, url, postId } of posts) {
+            for (const { isPinned, url, ft } of posts) {
                 control.postpone();
 
                 if (urls.size >= max || counter.isOver()) {
@@ -228,18 +229,30 @@ export const getPostUrls = async (page: Page, {
                     return;
                 }
 
-                const convertedDate = convertDate(publishedTime);
+                const { top_level_post_id, story_attachment_style, page_id, page_insights } = ft ?? {};
+
+                if (story_attachment_style === 'scheduled_live_video_post' // skip scheduled live
+                    || !top_level_post_id
+                    || !page_id
+                    || !page_insights
+                    || !page_insights?.[page_id]?.psn
+                    || !page_insights?.[page_id]?.post_context?.publish_time
+                    || PSN_POST_TYPE_BLACKLIST.includes(page_insights[page_id].psn)
+                ) {
+                    continue; // eslint-disable-line
+                }
+
+                const convertedDate = convertDate(page_insights[page_id].post_context.publish_time);
                 const inDateRange = !isPinned
                     ? counter.time(convertedDate)
                     : date.compare(convertedDate); // skip increasing metrics for pinned posts
 
-                const parsed = storyFbToDesktopPermalink(url, postId);
+                const parsed = storyFbToDesktopPermalink({ url, username, postId: top_level_post_id });
 
                 log.debug('Post info', {
                     isPinned,
-                    publishedTime,
+                    ft,
                     url,
-                    postId,
                     parsed: parsed?.toString(),
                     inDateRange,
                     convertedDate,
@@ -254,11 +267,12 @@ export const getPostUrls = async (page: Page, {
                     await requestQueue.addRequest({
                         url: parsed.toString(),
                         userData: {
+                            override: request.userData.override,
                             label: LABELS.POST,
                             useMobile: false,
                             username,
-                            canonical: `${DESKTOP_ADDRESS}/${username}/${postId || story_fbid
-                                ? `posts/${postId || story_fbid}`
+                            canonical: `${DESKTOP_ADDRESS}/${username}/${top_level_post_id || story_fbid
+                                ? `posts/${top_level_post_id || story_fbid}`
                                 : parsed.pathname.split(/\/(photos|videos)\//).slice(1).join('/')
                             }`,
                         },
@@ -278,46 +292,86 @@ export const getPostUrls = async (page: Page, {
         }
 
         await sleep(scrollingSleep);
-
-        try {
-            await page.click('a[ajaxify^="/pages_reaction_units/more/"]', { delay: scrollingSleep });
-            log.debug('Clicking see more', { currentUrl });
-        } catch (e) {
-            log.debug(`More click`, { e: e.message, currentUrl });
-        }
     };
 
-    const interceptAjax = async (res: Response) => {
-        const status = res.status();
+    const interceptAjax = async (res: HTTPResponse) => {
+        try {
+            if (res.headers()?.['content-type']?.includes('json') && isError(await res.json())) {
+                throw new InfoError('Rate limited', {
+                    namespace: 'getPostUrls',
+                    url: res.url(),
+                });
+            }
 
-        if (status !== 200 && status !== 302) {
-            log.debug('Res status', { status });
-            finish.resolve();
-        } else if (status === 302) {
-            finish.reject(new InfoError('Redirected to login', {
-                namespace: 'getPostUrls',
-                url: res.url(),
-            }));
+            const status = res.status();
+
+            if (status !== 200 && status !== 302) {
+                log.debug('Res status', { status });
+                finish.resolve();
+            } else if (status === 302 && (res.url().includes('login') || res.url().includes('next='))) {
+                throw new InfoError('Redirected to login', {
+                    namespace: 'getPostUrls',
+                    url: res.url(),
+                });
+            }
+        } catch (e) {
+            finish.reject(e);
         }
     };
 
     page.on('response', interceptAjax);
 
     try {
-        await getPosts();
-
         let lastCount = 0;
+        let stillLoading = 0;
+
+        const resetScroll = async () => {
+            if (!page.isClosed() && !finish.resolved) {
+                await page.evaluate(() => {
+                    window.scrollBy({ top: 0 });
+                    window.scrollBy({ top: window.innerHeight });
+                    window.scrollBy({ top: 0 });
+                });
+            }
+        };
+
+        await resetScroll();
 
         await control.run([
             finish.promise,
             scrollUntil(page, {
                 sleepMillis: scrollingSleep,
                 maybeStop: async ({ count, bodyChanged, scrollChanged }) => {
-                    await getPosts();
+                    if (page.isClosed() || finish.resolved) {
+                        return true;
+                    }
 
-                    if (lastCount < urls.size) {
-                        lastCount = urls.size;
-                        log.info(`Current posts ${urls.size}/${max}`, { url: currentUrl, count, bodyChanged, scrollChanged });
+                    try {
+                        await page.waitForSelector('#pages_msite_body_contents [data-sigil*="loading"]:not([style])', { timeout: 1000 });
+
+                        stillLoading = 0;
+
+                        await getPosts();
+
+                        if (lastCount < urls.size) {
+                            lastCount = urls.size;
+                            log.info(`Current posts ${urls.size}/${max}`, { url: currentUrl, count, bodyChanged, scrollChanged });
+                        }
+                    } catch (e) {
+                        if (e.name === 'TimeoutError') {
+                            stillLoading++;
+                            if (urls.size === 0 && stillLoading > 15) {
+                                finish.reject(new InfoError(`Posts are not loading`, {
+                                    namespace: 'posts',
+                                    url: request.loadedUrl,
+                                }));
+
+                                return false;
+                            }
+                        }
+                        log.debug(`scrollUntil`, { e });
+                    } finally {
+                        await resetScroll();
                     }
 
                     return urls.size >= max || counter.isOver() || (count > 20 && !bodyChanged && !scrollChanged);
@@ -394,17 +448,21 @@ export const getReviews = async (
         await sleep(500);
     };
 
-    const interceptAjax = async (res: Response) => {
-        const status = res.status();
+    const interceptAjax = async (res: HTTPResponse) => {
+        try {
+            const status = res.status();
 
-        if (status !== 200 && status !== 302) {
-            log.debug('Res status', { status });
-            finish.resolve();
-        } else if (status === 302) {
-            finish.reject(new InfoError('Redirected to login', {
-                namespace: 'getReviews',
-                url: res.url(),
-            }));
+            if (status !== 200 && status !== 302) {
+                log.debug('Res status', { status });
+                finish.resolve();
+            } else if (status === 302) {
+                throw new InfoError('Redirected to login', {
+                    namespace: 'getReviews',
+                    url: res.url(),
+                });
+            }
+        } catch (e) {
+            finish.reject(e);
         }
     };
 
@@ -418,7 +476,11 @@ export const getReviews = async (
             scrollUntil(page, {
                 sleepMillis: 500,
                 maybeStop: async ({ scrollChanged, count, bodyChanged }) => {
-                    await getReviewsFromPage();
+                    try {
+                        await getReviewsFromPage();
+                    } catch (e) {
+                        log.debug('scrollUntil', { error: e.message });
+                    }
 
                     return reviews.size >= max || (count > 2 && !scrollChanged && !bodyChanged);
                 },
@@ -438,7 +500,7 @@ export const getReviews = async (
 
     const processedReviews = [...reviews.values()].filter((s) => date.compare(s.date)).map((s) => {
         if (s.url && s.url.includes('story_fbid')) {
-            const parsed = storyFbToDesktopPermalink(s.url);
+            const parsed = storyFbToDesktopPermalink({ url: s.url });
 
             return {
                 ...s,
@@ -533,7 +595,7 @@ export const getFieldInfos = async (page: Page, currentState: Partial<FbPage>): 
                 break;
             case 'priceRange':
                 out[key] = out[key] || (result[index]
-                    .map(s => (s.split(/·*/g, 2)[1])) // $ · $$$
+                    .map(s => (s.split(/ ?· ?/g, 2)[1])) // $ · $$$
                     .filter(s => s))[0] || null;
                 break;
             case 'address':
@@ -599,10 +661,10 @@ export const isNotFoundPage = async (page: Page) => {
  * A couple of regex operations on the post page, that contains
  * statistics about the post itself
  */
-export const getPostInfoFromScript = async (page: Page, url: string) => {
+export const getPostInfoFromScript = async (page: Page, url: string): Promise<FbPost['postStats']> => {
     // fetch "timeslice" scripts, don't want related posts
     const html = await page.$$eval('script', async (script, postUrl) => {
-        const r = new RegExp(postUrl, 'i');
+        const r = new RegExp(postUrl as string, 'i');
 
         return script.filter((s) => {
             return r.test(s.innerHTML);
@@ -696,20 +758,17 @@ export const getPostComments = async (
         max,
         mode = 'RANKED_THREADED',
         request,
+        add,
     }: {
         date: MinMaxDates;
         max?: number;
         mode?: FbCommentsMode;
         request: Apify.Request;
-        minPostComments?: number;
+        add: (comment: FbComment) => Promise<any>;
     },
-): Promise<FbPost['postComments']> => {
+): Promise<number> => {
     if (!max) {
-        return {
-            comments: [],
-            count: 0,
-            mode,
-        };
+        return 0;
     }
 
     const comments = new Map<string, FbComment>(request.userData.comments || []);
@@ -725,81 +784,99 @@ export const getPostComments = async (
 
     log.debug('Starting loading comments', { url: currentUrl, mode, max });
 
-    const interceptGrapQL = async (res: Response) => {
-        if (page.isClosed()) {
-            return;
-        }
-
-        if (res.url().includes('api/graphql/') && canStartAdding) {
-            let json: FbGraphQl | null = null;
-
-            try {
-                json = await res.json() as FbGraphQl;
-            } catch (e) {
-                log.debug(`res.json ${e.message}`, { url: res.url() });
+    const interceptGrapQL = async (res: HTTPResponse) => {
+        try {
+            if (page.isClosed() || finish.resolved) {
+                return;
             }
 
-            if (json) {
-                const data = get(json, ['data', 'feedback', 'display_comments']);
+            if (res.url().includes('api/graphql/') && canStartAdding) {
+                let json: FbGraphQl | null = null;
 
-                if (data) {
-                    if (data.count > count) {
-                        count = data.count; // eslint-disable-line prefer-destructuring
-                        if (count < max) {
-                            max = count;
-                        }
-                    }
+                try {
+                    json = await res.json() as FbGraphQl;
+                } catch (e) {
+                    log.debug(`res.json ${e.message}`, { url: res.url() });
+                }
 
-                    if (data.edges?.length > 0) {
-                        counter.add(data.edges.length);
-                        control.postpone(); // postpone abort only if there are comments available
+                if (json) {
+                    const errored = isError(json);
 
-                        for (const p of data.edges.map((s) => s.node).filter(s => s)) {
-                            if (!comments.has(p.id)) {
-                                if (comments.size >= max) {
-                                    break;
-                                }
+                    if (!errored) {
+                        const data = get(json, ['data', 'feedback', 'display_comments']);
 
-                                const created = convertDate(p.created_time, true);
-
-                                if (counter.time(created)) {
-                                    comments.set(p.id, {
-                                        date: created,
-                                        name: get(p, ['author', 'name']),
-                                        profileUrl: get(p, ['author', 'url']) || null,
-                                        profilePicture: get(
-                                            p,
-                                            ['author', 'profile_picture_depth_0', 'uri'],
-                                            get(p, ['author', 'profile_picture_depth_1_legacy', 'uri']),
-                                        ) || null,
-                                        text: get(p, ['body', 'text']) || null,
-                                        url: p.url,
-                                    });
+                        if (data) {
+                            if (data.count > count) {
+                                count = data.count; // eslint-disable-line prefer-destructuring
+                                if (count < max) {
+                                    max = count;
                                 }
                             }
+
+                            if (data.edges?.length > 0) {
+                                counter.add(data.edges.length);
+                                control.postpone(); // postpone abort only if there are comments available
+
+                                for (const p of data.edges.map((s) => s.node).filter(s => s)) {
+                                    if (!comments.has(p.id)) {
+                                        if (comments.size >= max) {
+                                            break;
+                                        }
+
+                                        const created = convertDate(p.created_time, true);
+
+                                        if (counter.time(created)) {
+                                            const comment: FbComment = {
+                                                date: created,
+                                                name: get(p, ['author', 'name']),
+                                                profileUrl: get(p, ['author', 'url']) || null,
+                                                profilePicture: get(
+                                                    p,
+                                                    ['author', 'profile_picture_depth_0', 'uri'],
+                                                    get(p, ['author', 'profile_picture_depth_1_legacy', 'uri']),
+                                                ) || null,
+                                                text: get(p, ['body', 'text']) || null,
+                                                url: p.url,
+                                            };
+
+                                            comments.set(p.id, comment);
+
+                                            await add(comment);
+                                        }
+                                    }
+                                }
+                            }
+
+                            const hasNext = get(data, ['page_info', 'has_next_page']);
+
+                            if (hasNext === false || comments.size >= max || counter.isOver()) {
+                                log.debug('Posts comments', { hasNext, size: comments.size, ...counter.stats() });
+                                finish.resolve();
+                            }
                         }
-                    }
-
-                    const hasNext = get(data, ['page_info', 'has_next_page']);
-
-                    if (hasNext === false || comments.size >= max || counter.isOver()) {
-                        log.debug('Posts comments', { hasNext, size: comments.size, ...counter.stats() });
-                        finish.resolve();
+                    } else {
+                        throw new InfoError('Rate limited', {
+                            userData: json,
+                            url: currentUrl,
+                            namespace: 'getPostComments',
+                        });
                     }
                 }
             }
-        }
 
-        const status = res.status();
+            const status = res.status();
 
-        if (status !== 200 && status !== 302) {
-            log.debug('Res status', { status });
-            finish.resolve();
-        } else if (status === 302) {
-            finish.reject(new InfoError('Redirected to login', {
-                namespace: 'getPostComments',
-                url: res.url(),
-            }));
+            if (status !== 200 && status !== 302) {
+                log.debug('Res status', { status });
+                finish.resolve();
+            } else if (status === 302 && (res.url().includes('next=') || res.url().includes('/login'))) {
+                throw new InfoError('Redirected to login', {
+                    namespace: 'getPostComments',
+                    url: res.url(),
+                });
+            }
+        } catch (e) {
+            finish.reject(e);
         }
     };
 
@@ -923,43 +1000,47 @@ export const getPostComments = async (
                 scrollUntil(page, {
                     sleepMillis: 500, // 1500 seconds in total
                     maybeStop: async ({ bodyChanged }) => {
-                        if (page.isClosed()) {
-                            return true;
-                        }
+                        try {
+                            if (page.isClosed() || finish.resolved) {
+                                return true;
+                            }
 
-                        const clicked = await page.$$eval(CSS_SELECTORS.LOAD_MORE_COMMENTS, async (els) => {
-                            let clicks = 0;
+                            const clicked = await page.$$eval(CSS_SELECTORS.LOAD_MORE_COMMENTS, async (els) => {
+                                let clicks = 0;
 
-                            (els as HTMLAnchorElement[]).filter(s => !s.querySelector('i') && !s.closest('ul')).forEach((el) => {
-                                el.click();
-                                clicks++;
+                                (els as HTMLAnchorElement[]).filter(s => !s.querySelector('i') && !s.closest('ul')).forEach((el) => {
+                                    el.click();
+                                    clicks++;
+                                });
+
+                                return clicks;
                             });
 
-                            return clicks;
-                        });
+                            if (!clicked) {
+                                clickTries++;
+                            }
 
-                        if (!clicked) {
-                            clickTries++;
+                            await sleep(500);
+
+                            log.debug('Current clicks on scrollUntil', { url: currentUrl, clicked, clickTries });
+
+                            if (page.isClosed() || finish.resolved || (!bodyChanged && clickTries > 3)) {
+                                return true;
+                            }
+
+                            const { inRange } = counter.stats();
+
+                            if (lastCount !== inRange) {
+                                lastCount = inRange;
+                                log.info(`Got ${inRange}/${max} comments`, { url: currentUrl });
+                            }
+
+                            await page.evaluate(() => {
+                                document.querySelectorAll('h6.accessible_elem ~ ul > li').forEach(s => s.remove());
+                            });
+                        } catch (e) {
+                            log.debug('scrollUntil', { e: e.message });
                         }
-
-                        await sleep(500);
-
-                        log.debug('Current clicks on scrollUntil', { url: currentUrl, clicked, clickTries });
-
-                        if (page.isClosed() || (!bodyChanged && clickTries > 3)) {
-                            return true;
-                        }
-
-                        const { inRange } = counter.stats();
-
-                        if (lastCount !== inRange) {
-                            lastCount = inRange;
-                            log.info(`Got ${inRange}/${max} comments`, { url: currentUrl });
-                        }
-
-                        await page.evaluate(() => {
-                            document.querySelectorAll('h6.accessible_elem ~ ul > li').forEach(s => s.remove());
-                        });
 
                         return comments.size >= max || counter.isOver();
                     },
@@ -980,15 +1061,9 @@ export const getPostComments = async (
         finish.resolve();
     }
 
-    const processedComments = [...comments.values()];
+    log.info(`Got ${comments.size} comments in ${start() / 1000}s`, { url: currentUrl });
 
-    log.info(`Got ${processedComments.length} comments in ${start() / 1000}s`, { url: currentUrl });
-
-    return {
-        count,
-        mode,
-        comments: processedComments,
-    };
+    return count;
 };
 
 /**

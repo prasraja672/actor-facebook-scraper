@@ -2,17 +2,6 @@
 ​
 Extract public information from Facebook Pages.
 ​
-- [Features](#features)
-- [Cost of usage](#cost-of-usage)
-- [Detailed step-by-step guide](#detailed-step-by-step-guide)
-- [Input](#input)
-- [Output](#output)
-- [Displaying only posts without page information](#displaying-only-posts-without-page-information)
-- [Limitations](#limitations)
-- [Versioning](#versioning)
-- [Upcoming features](#upcoming-features)
-- [License](#license)
-​
 ## Features
 ​
 * Extract content from a Facebook page:
@@ -172,6 +161,31 @@ https://api.apify.com/v2/datasets/zbg3vVF3NnXGZfdsX/items?format=json&clean=1&un
 ​
 `unwind` will turn the `posts` property on the dataset to become dataset items themselves. the `fields` parameters makes sure to only include the fields that are important.
 
+## Extend Output Function
+
+You can split your dataset by comment, instead of having everything nested. The following code can output one comment per dataset item:
+
+```js
+async ({ data, item, customData, Apify }) => {
+    const { posts, ...pageData } = item;
+
+    return posts.flatMap((post) => {
+        const { postComments: { comments, ...postData }, ...restOfPost } = post;
+
+        return comments.map((comment) => {
+            return {
+                ...pageData,
+                ...postData,
+                ...restOfPost,
+                ...comment,
+            }
+        });
+    });
+}
+```
+
+Each output item will then be flat.
+
 ## Extend Scraper Function
 
 You can use the extend scraper function to add more functionality to the scraper. All pages are kept in the `map` variable:
@@ -206,13 +220,14 @@ async ({ page, LABELS, label, request, username, map, fns, customData, Apify }) 
 ​
 ## Limitations
 ​
-* Personal profiles and groups aren't accessible yet
+* Personal profiles and groups aren't accessible
+* "About" can't be accessed publicly
+* Some pages with a new layout won't load posts and are not supported
 * The "Likes" count is a best effort. The mobile page doesn't provide the count, and some languages don't provide any at all. So if a page has, e.g. over 1.9M likes, the number will most likely be 1,900,000 instead of an exact number.
 * No content, stats or comments for live stream posts
 * New reviews don't contain a rating from 1 to 5, but are rather positive or negative
 * The cut-off date for posts happen on the original posted date, not the edited date, i.e: posts show as `February 20th 2:11AM`, but that's the edited date, the actual post date is `February 19th 11:31AM` provided on the DOM
 * The order of items isn't necessarily the same as seen on the page, and is not sorted by date
-* Comments on comments (nested comments / conversations) aren't included in the output, only top-level comments on the posts.
 ​
 ## Versioning
 ​
@@ -224,7 +239,6 @@ This project adheres to semver.
 ​
 ## Upcoming features
 ​
-* Separated mode for posts, comments, and reviews (breaking change)
 * Public groups
 ​
 ## License

@@ -15,7 +15,7 @@ export const LABELS: Record<FbLabel, FbLabel> = {
 
 export const CSS_SELECTORS = {
     SEE_MORE: '[src*="HOn-DOfNHK1"],[src*="ZfrShcKhxxi"]',
-    POST_TIME: 'abbr[data-utime]',
+    POST_TIME: 'abbr',
     POST_CONTAINER: '[role="feed"] [role="article"]',
     PAGE_TRANSPARENCY: '[img*="ot671xmFQRs"]',
     MOBILE_CAPTCHA: 'img[src*="/captcha/"]',

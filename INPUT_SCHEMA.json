@@ -249,6 +249,13 @@
                 "日本語(関西)"
             ]
         },
+        "countryCode": {
+            "title": "Country code as language",
+            "description": "Set the country code the same as language",
+            "type": "boolean",
+            "editor": "checkbox",
+            "default": false
+        },
         "searchPages": {
             "title": "Search pages",
             "description": "Search pages from the public directory",
@@ -330,6 +337,14 @@
             "type": "string",
             "editor": "textfield"
         },
+        "minCommentDate": {
+            "title": "Maximum comment date",
+            "description": "Limit the maximum date for comments",
+            "example": "2020-01-01",
+            "pattern": "^(today|yesterday|\\d+\\s?(minute|second|day|hour|month|year|week)s?|\\d{4}\\-\\d{2}\\-\\d{2}(\\s\\d{2}\\:\\d{2}\\:\\d{2})?)$",
+            "type": "string",
+            "editor": "textfield"
+        },
         "maxReviews": {
             "title": "Max reviews",
             "description": "Limit the max number of reviews to return",
@@ -345,16 +360,6 @@
             "pattern": "^(today|yesterday|\\d+\\s?(minute|second|day|hour|month|year|week)s?|\\d{4}\\-\\d{2}\\-\\d{2}(\\s\\d{2}\\:\\d{2}\\:\\d{2})?)$",
             "type": "string",
             "editor": "textfield"
-        },
-        "scrapeAbout": {
-            "title": "About",
-            "editor": "checkbox",
-            "description": "Get the About page if exists",
-            "default": true,
-            "example": true,
-            "type": "boolean",
-            "groupCaption": "Sections to scrape",
-            "groupDescription": "Mark the sections you want to include in your dataset"
         },
         "scrapeReviews": {
             "title": "Reviews",
@@ -433,6 +438,14 @@
             "title": "Use stealth",
             "description": "Enable stealth on headless Chrome. Enable this only if you're having problems with blocking.",
             "type": "boolean"
+        },
+        "maxConcurrency": {
+            "title": "Max concurrency",
+            "description": "Limit max concurrency to avoid crashes",
+            "default": 20,
+            "prefill": 20,
+            "type": "integer",
+            "editor": "number"
         },
         "debugLog": {
             "title": "Debug Log",

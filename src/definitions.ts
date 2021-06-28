@@ -3,6 +3,26 @@ export type FbLabel = 'LISTING' | 'PAGE' | 'POST' | 'PHOTO' | 'SEARCH';
 export type FbCommentsMode = 'RANKED_THREADED' | 'RECENT_ACTIVITY' | 'RANKED_UNFILTERED';
 export type FbMap = Map<string, Partial<FbPage>>;
 
+export interface FbError {
+    errors: Array<{
+        message: string
+        severity: string
+        code: number
+        api_error_code: number
+        summary: string
+        description: string
+        description_raw: string
+        is_silent: boolean
+        is_transient: boolean
+        requires_reauth: boolean
+        allow_user_retry: boolean
+        debug_info: any
+        query_path: any
+        fbtrace_id: string
+        www_request_id: string
+    }>
+}
+
 export interface FbGraphQl {
     // only the important parts
     data: {
@@ -48,10 +68,12 @@ export interface Schema {
     maxReviewDate?: string;
     maxPostComments?: number;
     maxCommentDate?: string;
+    minCommentDate?: string;
     maxReviews?: number;
     scrapeAbout?: boolean;
     scrapeReviews?: boolean;
     scrapePosts?: boolean;
+    countryCode?: boolean;
     scrapeServices?: boolean;
     language?: string;
     commentsMode?: FbCommentsMode;
@@ -61,6 +83,7 @@ export interface Schema {
     minPostComments?: number;
     minPosts?: number;
     searchLimit?: number;
+    maxConcurrency?: number;
     searchPages?: string[];
 }
 
@@ -79,6 +102,15 @@ export interface FbFT {
     top_level_post_id: string;
     page_id: string;
     story_attachment_style: string;
+    page_insights: {
+        [index: string]: {
+            psn: string;
+            page_id: string;
+            post_context: {
+                publish_time: number;
+            };
+        };
+    };
 }
 
 export interface FbLocalBusiness {
@@ -133,9 +165,18 @@ export interface FbPost {
     postText: string;
     postUrl: string;
     postStats: {
-        likes: number;
-        shares: number;
         comments: number;
+        reactions: number;
+        reactionsBreakdown: {
+          like: number;
+          haha: number;
+          wow: number;
+          love: number;
+          sorry: number;
+          support: number;
+          anger: number;
+        },
+        shares: number;
     };
     postComments: {
         count: number;
