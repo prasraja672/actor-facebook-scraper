@@ -28,7 +28,7 @@ There are two main components to take into account if you want to run Facebook S
 
 - [Compute units](https://apify.com/pricing/actors) - Used for running the scraper
 - [Minimum Actor memory](https://apify.com/pricing) - The actor uses Puppeteer and the minimum memory you need to run it is 2048 MB. More "input page URLs" means more memory will be needed to scrape all pages.
-- [Proxy](https://apify.com/proxy) - To run this actor you will need to have access to Residential proxies. If you don't contact us at [mailto:support@apify.com](support@apify.com).
+- [Proxy](https://apify.com/proxy) - To run this actor you will need to have access to Residential proxies. If you don't contact us at [support@apify.com](mailto:support@apify.com).
 
 The usage costs differ depending on depends on each specific case: list of URLs, total amount, set up memory, country, etc. When you scrape comments and reviews, the number of scraped posts decreases, as each post has a different URL and is scraped separately.
 
@@ -40,7 +40,7 @@ Limit the maxPosts parameter with a reasonable number so that you do not run out
 ​
 ### Free plan
 
-Apify provides a free plan where you can test your setup. With $5 platform usage credits and 4 GB maximum actor memory you can try the actor for free. For Residential Proxy trial, please contact us at support@apify.com or on Intercom.
+Apify provides a free plan where you can test your setup. With $5 platform usage credits and 4 GB maximum actor memory you can try the actor for free. For Residential Proxy trial, please contact us at [support@apify.com](mailto:support@apify.com) or on Intercom.
 
 ### Example pricing
 
