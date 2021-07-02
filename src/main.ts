@@ -328,7 +328,7 @@ Apify.main(async () => {
             },
         },
         browserPoolOptions: {
-            maxOpenPagesPerBrowser: 1, // required to use one IP per tab
+            maxOpenPagesPerBrowser: 0, // required to use one IP per tab
             preLaunchHooks: [async (pageId, launchContext) => {
                 const { request } = crawler.crawlingContexts.get(pageId);
 
@@ -770,6 +770,8 @@ Apify.main(async () => {
                     username: extractUsernameFromUrl(request.url),
                     label: 'HANDLE',
                 });
+
+                await browserController.close(page);
             }
 
             log.debug(`Done with page ${request.url}`);
