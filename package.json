@@ -1,10 +1,10 @@
 {
     "name": "actor-facebook-scraper",
-    "version": "5.0.0",
+    "version": "5.1.0",
     "description": "Extract public profile information from Facebook pages and service listings. The actor scrapes data from Facebook posts, comments, reviews, and more.",
     "dependencies": {
         "apify": "^1.2.1",
-        "puppeteer": "*",
+        "playwright": "*",
         "async-atomic-store": "^1.2.2",
         "delayable-idle-abort-promise": "^1.0.0",
         "escape-string-regexp": "^4.0.0",
@@ -29,8 +29,8 @@
     },
     "scripts": {
         "start": "node -r ts-node/register/transpile-only src/main.ts",
-        "lint": "eslint ./src --ext .js,.jsx",
-        "lint:fix": "eslint ./src --ext .js,.jsx --fix",
+        "lint": "eslint ./src --ext .ts",
+        "lint:fix": "eslint ./src --ext .ts --fix",
         "test": "jest"
     },
     "license": "Apache-2.0"

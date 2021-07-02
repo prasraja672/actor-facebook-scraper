@@ -1,7 +1,6 @@
 import Apify from 'apify';
-import type { Page, HTTPResponse } from 'puppeteer';
+import type { Page, Response as HTTPResponse } from 'playwright';
 import DelayAbort, { AbortError } from 'delayable-idle-abort-promise';
-import * as escapeRegex from 'escape-string-regexp';
 import get = require('lodash.get');
 import type { FbPageInfo, FbPost, FbPage, FbGraphQl, FbComment, FbCommentsMode, FbReview, FbService } from './definitions';
 import {
@@ -266,8 +265,10 @@ export const getPostUrls = async (page: Page, {
 
                     await requestQueue.addRequest({
                         url: parsed.toString(),
+                        uniqueKey: `post-${top_level_post_id || story_fbid}`,
                         userData: {
                             override: request.userData.override,
+                            postId: top_level_post_id || story_fbid,
                             label: LABELS.POST,
                             useMobile: false,
                             username,
@@ -294,9 +295,11 @@ export const getPostUrls = async (page: Page, {
         await sleep(scrollingSleep);
     };
 
+    let isReady = false;
+
     const interceptAjax = async (res: HTTPResponse) => {
         try {
-            if (res.headers()?.['content-type']?.includes('json') && isError(await res.json())) {
+            if (res.headers()?.['content-type']?.includes('json') && isError(await res.json() as any)) {
                 throw new InfoError('Rate limited', {
                     namespace: 'getPostUrls',
                     url: res.url(),
@@ -315,7 +318,9 @@ export const getPostUrls = async (page: Page, {
                 });
             }
         } catch (e) {
-            finish.reject(e);
+            if (isReady) {
+                finish.reject(e);
+            }
         }
     };
 
@@ -337,6 +342,8 @@ export const getPostUrls = async (page: Page, {
 
         await resetScroll();
 
+        isReady = true;
+
         await control.run([
             finish.promise,
             scrollUntil(page, {
@@ -347,7 +354,10 @@ export const getPostUrls = async (page: Page, {
                     }
 
                     try {
-                        await page.waitForSelector('#pages_msite_body_contents [data-sigil*="loading"]:not([style])', { timeout: 1000 });
+                        await page.waitForSelector('#pages_msite_body_contents [data-sigil*="loading"]:not([style])', {
+                            timeout: 1000,
+                            state: 'attached',
+                        });
 
                         stillLoading = 0;
 
@@ -448,6 +458,8 @@ export const getReviews = async (
         await sleep(500);
     };
 
+    let isReady = false;
+
     const interceptAjax = async (res: HTTPResponse) => {
         try {
             const status = res.status();
@@ -462,7 +474,9 @@ export const getReviews = async (
                 });
             }
         } catch (e) {
-            finish.reject(e);
+            if (isReady) {
+                finish.reject(e);
+            }
         }
     };
 
@@ -471,6 +485,8 @@ export const getReviews = async (
     await getReviewsFromPage();
 
     try {
+        isReady = true;
+
         await control.run([
             finish.promise,
             scrollUntil(page, {
@@ -661,15 +677,13 @@ export const isNotFoundPage = async (page: Page) => {
  * A couple of regex operations on the post page, that contains
  * statistics about the post itself
  */
-export const getPostInfoFromScript = async (page: Page, url: string): Promise<FbPost['postStats']> => {
+export const getPostInfoFromScript = async (page: Page, request: Apify.Request): Promise<FbPost['postStats']> => {
     // fetch "timeslice" scripts, don't want related posts
-    const html = await page.$$eval('script', async (script, postUrl) => {
-        const r = new RegExp(postUrl as string, 'i');
-
+    const html = await page.$$eval('script:not([nonce],[type])', async (script, postId) => {
         return script.filter((s) => {
-            return r.test(s.innerHTML);
+            return s.innerHTML.includes(postId);
         }).map((s) => s.innerHTML).join('\n');
-    }, escapeRegex(`url:"${url}`));
+    }, request.userData.postId);
 
     const commentsMatch = html.matchAll(/comment_count:{total_count:(\d+)/g);
     const reactionsMatch = html.matchAll(/reaction_count:{count:(\d+)/g);
@@ -704,7 +718,9 @@ export const getPostInfoFromScript = async (page: Page, url: string): Promise<Fb
  * which we are already expecting
  */
 export const getPostContent = async (page: Page): Promise<Partial<FbPost>> => {
-    await page.waitForSelector(CSS_SELECTORS.POST_CONTAINER);
+    await page.waitForSelector(CSS_SELECTORS.POST_CONTAINER, {
+        state: 'attached',
+    });
 
     const content = await page.$eval(CSS_SELECTORS.POST_CONTAINER, async (el): Promise<Partial<FbPost>> => {
         const postDate = (el.querySelector('[data-utime]') as HTMLDivElement)?.dataset?.utime;
@@ -780,6 +796,7 @@ export const getPostComments = async (
     const control = DelayAbort(60000);
     let count = 0;
     let canStartAdding = false;
+    let isReady = false;
     const counter = dateRangeItemCounter(date);
 
     log.debug('Starting loading comments', { url: currentUrl, mode, max });
@@ -876,7 +893,9 @@ export const getPostComments = async (
                 });
             }
         } catch (e) {
-            finish.reject(e);
+            if (isReady) {
+                finish.reject(e);
+            }
         }
     };
 
@@ -927,7 +946,7 @@ export const getPostComments = async (
             try {
                 await page.waitForSelector(CSS_SELECTORS.COMMENT_ORDER, {
                     timeout: 5000,
-                    visible: true,
+                    state: 'visible',
                 });
             } catch (e) {
                 log.debug('No more comments');
@@ -954,6 +973,7 @@ export const getPostComments = async (
                     try {
                         await page.waitForSelector('[role="menuitemcheckbox"]', {
                             timeout: 15000,
+                            state: 'visible',
                         });
                     } catch (e) {
                         log.debug(e.message, { url: currentUrl });
@@ -976,7 +996,7 @@ export const getPostComments = async (
                     try {
                         await page.waitForSelector(CSS_SELECTORS.LOAD_MORE_COMMENTS, {
                             timeout: 5000,
-                            visible: true,
+                            state: 'visible',
                         });
                     } catch (e) {
                         log.debug(e.message, { url: currentUrl });
@@ -994,6 +1014,7 @@ export const getPostComments = async (
 
             let clickTries = 0;
             let lastCount = 0;
+            isReady = true;
 
             await control.run([
                 finish.promise,

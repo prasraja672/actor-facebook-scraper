@@ -16,11 +16,11 @@ import {
     getPagesFromSearch,
 } from './page';
 import { statePersistor, emptyState } from './storage';
-import type { Schema, FbLabel, FbSection, FbPage, FbCommentsMode, FbComment, FbPost } from './definitions';
+import type { Schema, FbLabel, FbSection, FbPage, FbCommentsMode, FbPost } from './definitions';
 
 import LANGUAGES = require('./languages.json');
 
-const { log, puppeteer } = Apify.utils;
+const { log } = Apify.utils;
 
 const {
     getUrlLabel,
@@ -309,7 +309,7 @@ Apify.main(async () => {
         },
     });
 
-    const crawler = new Apify.PuppeteerCrawler({
+    const crawler = new Apify.PlaywrightCrawler({
         requestQueue,
         useSessionPool: true,
         sessionPoolOptions: {
@@ -323,18 +323,44 @@ Apify.main(async () => {
         maxConcurrency,
         proxyConfiguration: proxyConfig,
         launchContext: {
-            stealth: useStealth,
             launchOptions: {
                 devtools: debugLog,
-                useIncognitoPages: true,
             },
         },
         browserPoolOptions: {
             maxOpenPagesPerBrowser: 1, // required to use one IP per tab
+            preLaunchHooks: [async (pageId, launchContext) => {
+                const { request } = crawler.crawlingContexts.get(pageId);
+
+                const { userData: { useMobile } } = request;
+
+                // listing need to start in a desktop version
+                // page needs a mobile viewport
+                const userAgent = useMobile
+                    ? 'Mozilla/5.0 (Linux; Android 10; SM-A205U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36'
+                    : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_3_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36';
+
+                request.userData.userAgent = userAgent;
+
+                launchContext.launchOptions = {
+                    ...launchContext.launchOptions,
+                    viewport: {
+                        height: useMobile ? 1520 : 1080,
+                        width: useMobile ? 720 : 1920,
+                    },
+                    userAgent,
+                    bypassCSP: true,
+                    ignoreHTTPSErrors: true,
+                    locale: language,
+                    hasTouch: useMobile,
+                    isMobile: useMobile,
+                    deviceScaleFactor: useMobile ? 2 : 1,
+                };
+            }],
         },
         persistCookiesPerSession: sessionStorage !== '',
         handlePageTimeoutSecs, // more comments, less concurrency
-        preNavigationHooks: [async ({ page, request }, gotoOptions) => {
+        preNavigationHooks: [async ({ page, request, browserController }, gotoOptions) => {
             gotoOptions.waitUntil = request.userData.label === LABELS.POST || (request.userData.label === LABELS.PAGE && ['posts', 'reviews'].includes(request.userData.sub))
                 ? 'load'
                 : 'domcontentloaded';
@@ -374,46 +400,7 @@ Apify.main(async () => {
 
             await cache(page);
 
-            // make the page a little more lightweight
-            await puppeteer.blockRequests(page, {
-                urlPatterns: [
-                    '.woff',
-                    '.webp',
-                    '.mov',
-                    '.mpeg',
-                    '.mpg',
-                    '.mp4',
-                    '.woff2',
-                    '.ttf',
-                    '.ico',
-                    'safe_image.php',
-                    'static_map.php',
-                    'ajax/bz',
-                ],
-            });
-
-            const { userData: { useMobile } } = request;
-
-            // listing need to start in a desktop version
-            // page needs a mobile viewport
-            const userAgent = useMobile
-                ? 'Mozilla/5.0 (Linux; Android 10; SM-A205U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.91 Mobile Safari/537.36'
-                : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_3_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36';
-
-            request.userData.userAgent = userAgent;
-
-            await page.emulate({
-                userAgent,
-                viewport: {
-                    height: useMobile ? 700 : 1080,
-                    width: useMobile ? 400 : 1920,
-                    hasTouch: useMobile,
-                    isMobile: useMobile,
-                    deviceScaleFactor: useMobile ? 2 : 1,
-                },
-            });
-
-            await page.evaluateOnNewDocument(() => {
+            await page.addInitScript(() => {
                 const f = () => {
                     for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="cookie-policy-dialog-accept-button"],[data-cookiebanner="accept_button"],#accept-cookie-banner-label')) {
                         if (btn) {
@@ -455,14 +442,16 @@ Apify.main(async () => {
                     try {
                         await Promise.all([
                             page.waitForSelector(CSS_SELECTORS.MOBILE_META, {
-                                timeout: 15000, // sometimes the page takes a while to load the responsive interactive version
+                                timeout: 15000, // sometimes the page takes a while to load the responsive interactive version,
+                                state: 'attached',
                             }),
                             page.waitForSelector(CSS_SELECTORS.MOBILE_BODY_CLASS, {
                                 timeout: 15000, // correctly detected android. if this isn't the case, the image names will change
+                                state: 'attached',
                             }),
                         ]);
                     } catch (e) {
-                        throw new InfoError('An unexpected page layout was returned by the server. This request will be retried shortly.', {
+                        throw new InfoError(`An unexpected page layout was returned by the server. This request will be retried shortly.${e.message}`, {
                             url: request.url,
                             namespace: 'mobile-meta',
                             userData,
@@ -501,6 +490,10 @@ Apify.main(async () => {
                         userData,
                     });
                 }
+
+                await page.evaluate(() => {
+                    window.onerror = () => {};
+                });
 
                 if (label === LABELS.LISTING) {
                     const start = stopwatch();
@@ -667,10 +660,10 @@ Apify.main(async () => {
 
                     // actually parse post content here, it doesn't work on
                     // mobile address
-                    const { username, canonical } = userData;
+                    const { username } = userData;
 
                     const [postStats, content] = await Promise.all([
-                        getPostInfoFromScript(page, canonical),
+                        getPostInfoFromScript(page, request),
                         getPostContent(page),
                     ]);
 
@@ -797,6 +790,10 @@ Apify.main(async () => {
         label: 'SETUP',
         crawler,
     });
+
+    if (!debugLog) {
+        fns.patchLog(crawler);
+    }
 
     await crawler.run();
 

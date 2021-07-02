@@ -1,5 +1,5 @@
 import Apify from 'apify';
-import type { ElementHandle, HTTPResponse, HTTPRequest, Page } from 'puppeteer';
+import type { ElementHandle, Route, Response as HTTPResponse, Page } from 'playwright';
 import * as moment from 'moment';
 import * as vm from 'vm';
 
@@ -8,6 +8,18 @@ import { CSS_SELECTORS, MOBILE_HOST, DESKTOP_HOST, DESKTOP_ADDRESS, LABELS } fro
 import type { FbLocalBusiness, FbSection, FbLabel, FbReview, Schema, FbError, FbGraphQl, FbFT } from './definitions';
 
 const { log, sleep } = Apify.utils;
+
+/**
+ * Monkey-patch the handleRequestFunction failed... error
+ */
+export const patchLog = (crawler: Apify.BasicCrawler) => {
+    const originalException = crawler.log.exception.bind(crawler.log);
+    crawler.log.exception = (...args) => {
+        if (!args?.[1]?.includes('handleRequestFunction')) {
+            originalException(...args);
+        }
+    };
+};
 
 /**
  * Transform a input.startUrls, parse requestsFromUrl items as well,
@@ -165,7 +177,9 @@ export const deferred = <T = any>() => {
         reject = (arg) => {
             if (!resolved) {
                 resolved = true;
-                r2(arg);
+                setTimeout(() => {
+                    r2(arg);
+                });
             }
         };
     });
@@ -270,6 +284,7 @@ export const createPageSelector = <E extends Element, C extends (els: ElementHan
                 try {
                     await page.waitForSelector(selector, {
                         timeout: wait,
+                        state: 'attached',
                     });
                 } catch (e) {
                     if (e.name !== 'TimeoutError') {
@@ -598,13 +613,15 @@ export const normalizeOutputPageUrl = (url: string) => {
  * Sets the cookie on the page to the selected locale
  */
 export const setLanguageCodeToCookie = async (language: string, page: Page) => {
-    await page.setCookie({
-        domain: '.facebook.com',
-        secure: true,
-        name: 'locale',
-        path: '/',
-        value: language.replace('-', '_'),
-    });
+    await page.context().addCookies([
+        {
+            domain: '.facebook.com',
+            secure: true,
+            name: 'locale',
+            path: '/',
+            value: language.replace('-', '_'),
+        },
+    ]);
 };
 
 /**
@@ -1039,7 +1056,7 @@ export const resourceCache = (paths: RegExp[]) => {
                     const content = cache.get(url);
 
                     if (content && !content.loaded) {
-                        const buffer = await res.buffer();
+                        const buffer = await res.body();
 
                         /* eslint-disable */
                         const {
@@ -1065,27 +1082,46 @@ export const resourceCache = (paths: RegExp[]) => {
             }
         };
 
-        const request = async (req: HTTPRequest) => {
+        const request = async (route: Route) => {
             if (page.isClosed()) {
                 await cleanup();
                 return;
             }
 
+            const req = route.request();
+
             const url = req.url();
+
+            if ([
+                '.woff',
+                '.webp',
+                '.mov',
+                '.mpeg',
+                '.mpg',
+                '.mp4',
+                '.woff2',
+                '.ttf',
+                '.ico',
+                'static_map.php',
+                'ajax/bz',
+            ].some((resource) => url.includes(resource))) {
+                await route.abort();
+                return;
+            }
 
             try {
                 if (req.resourceType() === 'image') {
                     // serve empty images so the `onload` events don't fail
                     if (url.includes('.jpg') || url.includes('.jpeg')) {
-                        return await req.respond(images.jpg);
+                        return await route.fulfill(images.jpg);
                     }
 
                     if (url.includes('.png')) {
-                        return await req.respond(images.png);
+                        return await route.fulfill(images.png);
                     }
 
                     if (url.includes('.gif')) {
-                        return await req.respond(images.gif);
+                        return await route.fulfill(images.gif);
                     }
                 } else if (['script', 'stylesheet'].includes(req.resourceType()) && paths.some((path) => path.test(url))) {
                     const content = cache.get(url);
@@ -1093,7 +1129,7 @@ export const resourceCache = (paths: RegExp[]) => {
                     // log.debug('Cache', { url, headers: content?.headers, type: content?.contentType, length: content?.content?.length });
 
                     if (content?.loaded === true) {
-                        return await req.respond({
+                        return await route.fulfill({
                             body: content.content,
                             status: 200,
                             contentType: content.contentType,
@@ -1105,27 +1141,24 @@ export const resourceCache = (paths: RegExp[]) => {
                         loaded: false,
                     });
                 }
-
-                await req.continue();
             } catch (e) {
                 await cleanup();
                 log.debug('Resource cache', { e: e.message });
             }
+
+            await route.continue();
         };
 
         const cleanup = async () => {
             try {
-                await page.setRequestInterception(false);
-                page.off('request', request);
+                await page.unroute('**/*');
                 page.off('response', response);
             } catch (e) {
                 log.debug('Cache', { error: e.message });
             }
         };
 
-        await page.setRequestInterception(true);
-
-        page.on('request', request);
+        await page.route('**/*', request);
         page.on('response', response);
     };
 };
