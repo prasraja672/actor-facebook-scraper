@@ -156,7 +156,7 @@ Apify.main(async () => {
 
     const requestQueue = await Apify.openRequestQueue();
 
-    if (!startUrls?.length) {
+    if (!(startUrls?.length) && !(searchPages?.length)) {
         throw new Error('No requests were loaded from startUrls');
     }
 
