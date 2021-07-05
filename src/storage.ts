@@ -33,6 +33,12 @@ export const emptyState = (): FbPage => ({
     youtube: null,
     mission: [],
     overview: [],
+    services: [],
+    reviews: {
+        average: null,
+        count: null,
+        reviews: [],
+    },
     payment: null,
     checkins: '',
     '#startedAt': new Date().toISOString(),

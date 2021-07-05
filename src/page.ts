@@ -36,7 +36,7 @@ export const getPageInfo = async (page: Page): Promise<FbPageInfo> => {
     ] = await Promise.allSettled([
         page.$eval(CSS_SELECTORS.PAGE_NAME, async (el) => {
             if (el && el.attributes) {
-                window.unhideChildren(el as HTMLMetaElement);
+                window.unc(el as HTMLMetaElement);
 
                 const content = el.attributes.getNamedItem('content') as HTMLMetaElement | null;
 
@@ -60,7 +60,7 @@ export const getPageInfo = async (page: Page): Promise<FbPageInfo> => {
         let text = '';
 
         if (el && el.attributes) {
-            window.unhideChildren(el as HTMLMetaElement);
+            window.unc(el as HTMLMetaElement);
 
             const content = el.attributes.getNamedItem('content') as HTMLMetaElement | null;
 
@@ -730,7 +730,7 @@ export const getPostContent = async (page: Page): Promise<Partial<FbPost>> => {
             throw new Error('Missing .userContent');
         }
 
-        window.unhideChildren(userContent);
+        window.unc(userContent);
 
         const postText = userContent.innerText.trim();
         const images: HTMLImageElement[] = Array.from(el.querySelectorAll('img[src*="scontent"]'));
@@ -1095,6 +1095,7 @@ export const getServices = async (page: Page): Promise<FbService[]> => {
 
     await scrollUntil(page, {
         sleepMillis,
+        selectors: [CSS_SELECTORS.SERVICES],
         maybeStop: async ({ count, bodyChanged, scrollChanged }) => {
             await sleep(sleepMillis);
 
@@ -1102,11 +1103,20 @@ export const getServices = async (page: Page): Promise<FbService[]> => {
         },
     });
 
+    try {
+        await page.waitForSelector(CSS_SELECTORS.SERVICES, {
+            timeout: 5000,
+            state: 'attached',
+        });
+    } catch (e) {
+        log.debug('getServices', { message: e.message });
+    }
+
     return (await page.$$eval<FbService[]>(CSS_SELECTORS.SERVICES, (els) => {
         return els.map((el) => {
             const text = el.querySelector<HTMLSpanElement>('div > span');
 
-            window.unhideChildren(text);
+            window.unc(text);
 
             return {
                 title: el.querySelector('div > h3')?.textContent ?? null,

@@ -328,7 +328,7 @@ export const createSelectorFromImageSrc = (names: string[]) => {
                         return '';
                     }
 
-                    window.unhideChildren(textDiv);
+                    window.unc(textDiv);
 
                     return `${textDiv.innerText || ''}`.trim();
                 }).filter(s => s);
@@ -483,7 +483,7 @@ export const pageSelectors = {
                 return 0;
             }
 
-            window.unhideChildren(parent);
+            window.unc(parent);
 
             return (parent.innerText ? +parent.innerText.replace(/,/g, '.') : 0) || 0;
         });
@@ -510,10 +510,10 @@ export const pageSelectors = {
 
             container?.querySelectorAll('.text_exposed_hide').forEach(te => te.remove()); // emulate "see more"
 
-            window.unhideChildren(container);
+            window.unc(container);
 
             const joinInnerText = (selector: string) => [...(container?.querySelectorAll<HTMLDivElement>(selector) ?? [])].map((s) => {
-                window.unhideChildren(s);
+                window.unc(s);
                 return s.innerText;
             });
 
@@ -756,12 +756,19 @@ export const scrollUntil = async (page: Page, { doScroll = () => true, sleepMill
     const scrolls = new Set<number>();
     const heights = new Set<number>();
     let count = 0;
+    let lastCount = 0;
     const url = page.url();
 
     const isChanging = (histogram: Set<number>, num: number) => {
         if (num === undefined || num === null) {
             return false;
         }
+
+        if (histogram.size <= lastCount) {
+            return false;
+        }
+
+        lastCount = histogram.size;
 
         return [...histogram].every(val => (num !== val));
     };
@@ -1092,24 +1099,24 @@ export const resourceCache = (paths: RegExp[]) => {
 
             const url = req.url();
 
-            if ([
-                '.woff',
-                '.webp',
-                '.mov',
-                '.mpeg',
-                '.mpg',
-                '.mp4',
-                '.woff2',
-                '.ttf',
-                '.ico',
-                'static_map.php',
-                'ajax/bz',
-            ].some((resource) => url.includes(resource))) {
-                await route.abort();
-                return;
-            }
-
             try {
+                if ([
+                    '.woff',
+                    '.webp',
+                    '.mov',
+                    '.mpeg',
+                    '.mpg',
+                    '.mp4',
+                    '.woff2',
+                    '.ttf',
+                    '.ico',
+                    'static_map.php',
+                    'ajax/bz',
+                ].some((resource) => url.includes(resource))) {
+                    await route.abort();
+                    return;
+                }
+
                 if (req.resourceType() === 'image') {
                     // serve empty images so the `onload` events don't fail
                     if (url.includes('.jpg') || url.includes('.jpeg')) {
@@ -1141,12 +1148,12 @@ export const resourceCache = (paths: RegExp[]) => {
                         loaded: false,
                     });
                 }
+
+                await route.continue();
             } catch (e) {
                 await cleanup();
                 log.debug('Resource cache', { e: e.message });
             }
-
-            await route.continue();
         };
 
         const cleanup = async () => {

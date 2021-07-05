@@ -1,6 +1,6 @@
 {
     "name": "actor-facebook-scraper",
-    "version": "5.1.0",
+    "version": "5.1.1",
     "description": "Extract public profile information from Facebook pages and service listings. The actor scrapes data from Facebook posts, comments, reviews, and more.",
     "dependencies": {
         "apify": "^1.2.1",

@@ -1,4 +1,4 @@
 interface Window {
-    unhideChildren(el: HTMLElement | null): void;
+    unc(el: HTMLElement | null): void;
     logMe(...args: any): void;
 }

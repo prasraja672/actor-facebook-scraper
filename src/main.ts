@@ -1,6 +1,6 @@
 import Apify from 'apify';
 import { InfoError } from './error';
-import { LABELS, CSS_SELECTORS } from './constants';
+import { LABELS, CSS_SELECTORS, MOBILE_HOST } from './constants';
 import * as fns from './functions';
 import {
     getPagesFromListing,
@@ -328,7 +328,7 @@ Apify.main(async () => {
             },
         },
         browserPoolOptions: {
-            maxOpenPagesPerBrowser: 0, // required to use one IP per tab
+            maxOpenPagesPerBrowser: 1, // required to use one IP per tab
             preLaunchHooks: [async (pageId, launchContext) => {
                 const { request } = crawler.crawlingContexts.get(pageId);
 
@@ -374,33 +374,37 @@ Apify.main(async () => {
                 });
             });
 
-            await page.exposeFunction('unhideChildren', (element?: HTMLElement) => {
-                // weird bugs happen in this function, sometimes the dom element has no querySelectorAll for
-                // unknown reasons
-                if (!element) {
-                    return;
-                }
+            await page.exposeFunction('unc', (element?: HTMLElement) => {
+                try {
+                    // weird bugs happen in this function, sometimes the dom element has no querySelectorAll for
+                    // unknown reasons
+                    if (!element) {
+                        return;
+                    }
 
-                element.className = '';
-                if (typeof element.removeAttribute === 'function') {
-                    // weird bug that sometimes removeAttribute isn't a function?
-                    element.removeAttribute('style');
-                }
+                    element.className = '';
+                    if (typeof element.removeAttribute === 'function') {
+                        // weird bug that sometimes removeAttribute isn't a function?
+                        element.removeAttribute('style');
+                    }
 
-                if (typeof element.querySelectorAll === 'function') {
-                    for (const el of [...element.querySelectorAll<HTMLElement>('*')]) {
-                        el.className = ''; // removing the classes usually unhides
+                    if (typeof element.querySelectorAll === 'function') {
+                        for (const el of [...element.querySelectorAll<HTMLElement>('*')]) {
+                            el.className = ''; // removing the classes usually unhides
 
-                        if (typeof element.removeAttribute === 'function') {
-                            el.removeAttribute('style');
+                            if (typeof element.removeAttribute === 'function') {
+                                el.removeAttribute('style');
+                            }
                         }
                     }
-                }
+                } catch (e) {}
             });
 
             await cache(page);
 
             await page.addInitScript(() => {
+                window.onerror = () => {};
+
                 const f = () => {
                     for (const btn of document.querySelectorAll<HTMLButtonElement>('[data-testid="cookie-policy-dialog-accept-button"],[data-cookiebanner="accept_button"],#accept-cookie-banner-label')) {
                         if (btn) {
@@ -411,6 +415,18 @@ Apify.main(async () => {
                 };
                 setTimeout(f);
             });
+        }],
+        postNavigationHooks: [async ({ page, request, browserController }) => {
+            if (!page.isClosed()) {
+                // TODO: work around mixed context bug
+                if (page.url().includes(MOBILE_HOST) && !request.userData.useMobile) {
+                    await browserController.close(page);
+                    throw new InfoError(`Mismatched mobile / desktop`, {
+                        namespace: 'internal',
+                        url: request.url,
+                    });
+                }
+            }
         }],
         handlePageFunction: async ({ request, page, session, response, browserController }) => {
             const { userData } = request;
@@ -553,6 +569,8 @@ Apify.main(async () => {
                         case 'services':
                             try {
                                 const services = await getServices(page);
+
+                                console.log(services);
 
                                 if (services.length) {
                                     await map.append(username, async (value) => {
@@ -770,8 +788,6 @@ Apify.main(async () => {
                     username: extractUsernameFromUrl(request.url),
                     label: 'HANDLE',
                 });
-
-                await browserController.close(page);
             }
 
             log.debug(`Done with page ${request.url}`);
@@ -781,7 +797,7 @@ Apify.main(async () => {
                 // this only happens when maxRetries is
                 // comprised mainly of InfoError, which is usually a problem
                 // with pages
-                log.exception(error, 'handleFailedRequestFunction', error.toJSON());
+                log.exception(error, 'The request failed after all retries, last error was:', error.toJSON());
             } else {
                 log.error(`Requests failed on ${request.url} after ${request.retryCount} retries`);
             }
