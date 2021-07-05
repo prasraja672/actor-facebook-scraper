@@ -570,8 +570,6 @@ Apify.main(async () => {
                             try {
                                 const services = await getServices(page);
 
-                                console.log(services);
-
                                 if (services.length) {
                                     await map.append(username, async (value) => {
                                         return {
